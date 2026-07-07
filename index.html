@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"/>
+<meta name="theme-color" content="#f6f4ee"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Paris"/>
+<title>Paris · 2-Day Itinerary</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗼</text></svg>"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --card: #ffffff;
+    --ink: #1c1c1c;
+    --muted: #6b6b6b;
+    --line: #e7e3d9;
+    --soft: #f2eee6;
+    --accent: #2f6feb;
+    --accent-soft: #eaf1ff;
+    --danger: #c0392b;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 10px rgba(0,0,0,.04);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.4;
+    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+
+  /* ---------- Header ---------- */
+  header {
+    padding: 20px 18px 14px;
+    padding-top: calc(20px + env(safe-area-inset-top));
+    background: linear-gradient(180deg, #fffdf8, #f6f4ee);
+    border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+  h1 .em { font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+  /* ---------- Sticky toolbar ---------- */
+  .toolbar {
+    position: sticky; top: 0; z-index: 500;
+    background: rgba(246,244,238,.92);
+    backdrop-filter: saturate(1.4) blur(8px);
+    -webkit-backdrop-filter: saturate(1.4) blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tabs { display: flex; gap: 6px; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 4px; flex: 1; }
+  .tab {
+    flex: 1; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-size: 13px; font-weight: 650; padding: 8px 6px; border-radius: 9px;
+    cursor: pointer; line-height: 1.15; text-align: center;
+  }
+  .tab small { display: block; font-weight: 500; font-size: 11px; opacity: .8; }
+  .tab.active { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+
+  .icon-btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    width: 40px; height: 40px; border-radius: 11px; font-size: 17px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  }
+  .icon-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ---------- Menu ---------- */
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: 46px; z-index: 600;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 6px; min-width: 210px;
+  }
+  .menu button {
+    display: flex; width: 100%; align-items: center; gap: 10px; border: 0; background: transparent;
+    font: inherit; font-size: 14px; padding: 10px 10px; border-radius: 8px; cursor: pointer; color: var(--ink); text-align: left;
+  }
+  .menu button:hover { background: var(--soft); }
+  .menu button.danger { color: var(--danger); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 2px; }
+
+  /* ---------- Day meta ---------- */
+  .content { padding: 14px 14px 40px; }
+  .day-meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .day-title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; margin-right: auto; }
+  .chip {
+    background: var(--soft); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; font-size: 12px; color: var(--muted); white-space: nowrap;
+  }
+  .chip b { color: var(--ink); font-weight: 650; }
+  .day-actions { display: flex; gap: 8px; width: 100%; margin-top: 2px; }
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 12px; border-radius: 11px;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    text-decoration: none;
+  }
+  .btn.wide { flex: 1; }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.ghost { background: transparent; }
+
+  /* ---------- Map ---------- */
+  #mapPanel { margin-bottom: 14px; }
+  #map { height: 340px; width: 100%; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--soft); }
+  .map-note { font-size: 12px; color: var(--muted); padding: 8px 4px 0; }
+  .hidden { display: none !important; }
+
+  /* ---------- Stop cards ---------- */
+  .stop {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 13px 14px;
+    display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start;
+  }
+  .badge {
+    width: 30px; height: 30px; border-radius: 9px; color: #fff; font-weight: 800; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+  .stop-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .time { font-size: 13px; font-weight: 750; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .cat { font-size: 12px; font-weight: 650; }
+  .name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin-top: 1px; }
+  .dur { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .note { font-size: 13.5px; color: #3a3a3a; margin-top: 6px; line-height: 1.42; }
+
+  .card-links { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  .mini { font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--soft); }
+  .mini:active { background: var(--line); }
+  .mini b { color: var(--ink); font-weight: 650; }
+
+  .edit-row { display: flex; gap: 6px; margin-top: 10px; }
+  .edit-row .icon-btn { width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
+  .edit-row .spacer { flex: 1; }
+  .edit-row .del { color: var(--danger); border-color: #eecac4; }
+
+  /* ---------- Leg connector ---------- */
+  .leg {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 6px 9px 16px; position: relative;
+  }
+  .leg::before {
+    content: ""; position: absolute; left: 16px; top: -6px; bottom: -6px; width: 2px;
+    background: var(--line); border-radius: 2px;
+  }
+  .leg-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; padding-left: 12px; }
+  .leg-dist { font-size: 12.5px; color: var(--muted); }
+  .leg-dist.long { color: #a15c00; font-weight: 600; }
+  .leg-btns { display: flex; gap: 8px; margin-left: auto; }
+  .dir {
+    font-size: 12.5px; font-weight: 650; text-decoration: none; border-radius: 10px; padding: 9px 12px; min-height: 40px;
+    display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line);
+  }
+  .dir.g { background: var(--accent-soft); color: #1b48b3; border-color: #cfe0ff; }
+  .dir.a { background: #f0f0f2; color: #333; border-color: #e0e0e4; }
+  .leg-insert { text-align: center; padding: 2px 0 8px; }
+  .leg-insert button {
+    border: 1px dashed var(--line); background: transparent; color: var(--muted);
+    font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  }
+
+  .add-stop {
+    width: 100%; margin-top: 14px; border: 1px dashed var(--accent); color: var(--accent);
+    background: var(--accent-soft); font: inherit; font-size: 14px; font-weight: 650;
+    padding: 13px; border-radius: var(--radius); cursor: pointer;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 14px; }
+
+  /* ---------- Modal ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 1000; background: rgba(20,20,20,.4);
+    display: flex; align-items: flex-end; justify-content: center; padding: 0;
+  }
+  .modal-card {
+    background: var(--card); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height: 92vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(0,0,0,.2);
+  }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 14px; }
+  .modal-card h3 { margin: 0; font-size: 18px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field textarea {
+    width: 100%; font: inherit; font-size: 15px; padding: 11px 12px; border: 1px solid var(--line);
+    border-radius: 11px; background: #fff; color: var(--ink);
+  }
+  .field textarea { min-height: 66px; resize: vertical; }
+  .field input:focus, .field textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .loc-box { background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .loc-box .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .loc-hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+  .link-btn { border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 0 0; }
+  .modal-btns { display: flex; align-items: center; gap: 10px; margin-top: 8px; position: sticky; bottom: 0; background: var(--card); padding: 12px 0 2px; }
+  .modal-btns .spacer { flex: 1; }
+  .modal-btns .btn { padding: 11px 16px; font-size: 14px; }
+
+  @media (min-width: 720px) {
+    #map { height: 420px; }
+    .modal { align-items: center; }
+    .modal-card { border-radius: 18px; }
+  }
+  @media print {
+    .toolbar, .day-actions, .edit-row, .leg-insert, .add-stop, #mapPanel { display: none !important; }
+    .stop, .leg { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="em">🗼</span> Paris · 2-Day Itinerary</h1>
+    <div class="subtitle">
+      15–17 July 2026 · based at Hôtel Aramis Saint-Germain. Tap any leg for walking directions in
+      Google or Apple Maps. Tap <b>Edit ✏️</b> to add, remove or reorder stops — changes are saved on this device.
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs"></div>
+    <button class="icon-btn" id="editBtn" title="Edit mode" aria-label="Toggle edit mode">✏️</button>
+    <div class="menu-wrap">
+      <button class="icon-btn" id="menuBtn" title="More" aria-label="More options">⋯</button>
+      <div class="menu hidden" id="menu">
+        <button id="mExport">⤓ &nbsp;Backup / export</button>
+        <button id="mImport">⤒ &nbsp;Import backup</button>
+        <button id="mPrint">🖨 &nbsp;Print / save as PDF</button>
+        <hr/>
+        <button id="mReset" class="danger">↺ &nbsp;Reset to original plan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="mapPanel" class="hidden">
+      <div id="map"></div>
+      <div class="map-note">Lines are straight-line overviews. Tap a leg's <b>Google</b> or <b>Apple</b> button for real walking directions.</div>
+    </div>
+    <div class="day-meta" id="dayMeta"></div>
+    <div id="stopList"></div>
+    <button class="add-stop hidden" id="addStop">＋ Add a stop to this day</button>
+  </div>
+</div>
+
+<!-- Edit / add modal -->
+<div class="modal hidden" id="modal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="modalTitle">Edit stop</h3><button class="icon-btn" id="fClose" aria-label="Close">✕</button></div>
+    <div class="field"><label>Time</label><input id="f-time" placeholder="e.g. 14:00 or Late" autocomplete="off"/></div>
+    <div class="field"><label>Name</label><input id="f-title" placeholder="Place name" autocomplete="off"/></div>
+    <div class="field"><label>Category</label><input id="f-category" list="catlist" placeholder="Sight, Lunch, Museum…" autocomplete="off"/>
+      <datalist id="catlist">
+        <option>Hotel</option><option>Breakfast</option><option>Lunch</option><option>Dinner</option>
+        <option>Sight</option><option>Museum</option><option>Viewpoint</option><option>Walk / Rest</option>
+        <option>Neighborhood</option><option>Jazz bar</option><option>Cocktail bar</option><option>Shopping</option>
+      </datalist>
+    </div>
+    <div class="field"><label>Duration</label><input id="f-duration" placeholder="e.g. 45–60 min" autocomplete="off"/></div>
+    <div class="field"><label>Note</label><textarea id="f-note" placeholder="Anything to remember"></textarea></div>
+
+    <div class="loc-box">
+      <div class="row2">
+        <div class="field" style="margin:0"><label>Latitude</label><input id="f-lat" type="text" inputmode="decimal" placeholder="48.8566"/></div>
+        <div class="field" style="margin:0"><label>Longitude</label><input id="f-lng" type="text" inputmode="decimal" placeholder="2.3522"/></div>
+      </div>
+      <div class="field" style="margin:12px 0 0"><label>Or paste a Maps link / "lat, lng"</label><input id="f-paste" placeholder="Paste from Google/Apple Maps" autocomplete="off"/></div>
+      <button class="link-btn" id="fUsePrev" type="button">Use the previous stop's location</button>
+      <div class="loc-hint">Tip: in Google Maps, share a place → the link contains the coordinates. Short <code>maps.app.goo.gl</code> links won't work — use the full link or paste "lat, lng".</div>
+    </div>
+
+    <div class="modal-btns">
+      <button class="btn ghost danger hidden" id="fDelete">Delete</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="fCancel">Cancel</button>
+      <button class="btn primary" id="fSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept="application/json,.json" class="hidden"/>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ */
+/*  Default itinerary                                                  */
+/* ------------------------------------------------------------------ */
+const HOTEL = { lat: 48.8487, lng: 2.3263 };
+function s(time, title, category, duration, note, lat, lng) {
+  return { id: uid(), time, title, category, duration, note, lat, lng };
+}
+let _idc = 0;
+function uid() { _idc += 1; return "s" + Date.now().toString(36) + (_idc) + Math.random().toString(36).slice(2, 5); }
+
+function defaultData() {
+  return {
+    version: 1,
+    days: [
+      {
+        id: "d1", label: "Day 1", date: "15 Jul", title: "Classic Paris day",
+        stops: [
+          s("08:00", "Hôtel Aramis Saint-Germain", "Hotel", "Start", "Leave the hotel.", 48.8487, 2.3263),
+          s("08:05", "Poilâne Saint-Germain", "Breakfast", "20–25 min", "Quick bakery breakfast: croissant/pastry + coffee. Keep it fast.", 48.8498, 2.3268),
+          s("09:00", "Sainte-Chapelle", "Sight", "45–60 min", "Timed ticket recommended. The stained glass is the highlight.", 48.8554, 2.345),
+          s("10:15", "Notre-Dame Cathedral", "Sight", "30 min", "Free entry; check same-day reservation if available.", 48.853, 2.3499),
+          s("10:50", "Conciergerie", "Sight", "30–40 min", "Short stop. First to skip if the morning runs late.", 48.856, 2.3457),
+          s("12:00", "Homer Lobster / Odéon area", "Lunch", "60 min", "Casual quick lunch; keeps the Louvre/Eiffel day moving.", 48.8529, 2.3383),
+          s("14:00", "Louvre Museum", "Museum", "3h–3h15", "Timed entry. Do a targeted route, not the whole museum.", 48.8606, 2.3376),
+          s("17:15", "Tuileries Garden", "Walk / Rest", "45 min", "Outdoor break after the Louvre.", 48.8635, 2.327),
+          s("18:15", "Champs-Élysées / Arc de Triomphe", "Sight", "45 min", "Mainly the Arc + the walk. Shops only if on the way.", 48.8738, 2.295),
+          s("19:45", "Trocadéro", "Viewpoint", "20–30 min", "Best quick Eiffel photo spot.", 48.8629, 2.2874),
+          s("20:15", "Eiffel Tower", "Sight", "30 min exterior", "Exterior view; tower climb not planned.", 48.8584, 2.2945),
+          s("21:30", "Le Son de la Terre", "Dinner", "90 min", "Dinner + Seine/Notre-Dame + music. Reserve and check the program.", 48.8521, 2.3487),
+          s("23:00+", "Caveau de la Huchette", "Jazz bar", "Drinks / jazz", "Good if you still have energy; skip if Le Son already became a full music night.", 48.8528, 2.3468),
+          s("Late", "Hôtel Aramis Saint-Germain", "Hotel", "End", "Taxi/ride recommended after drinks.", 48.8487, 2.3263)
+        ]
+      },
+      {
+        id: "d2", label: "Day 2", date: "16 Jul", title: "Orsay + Montmartre day",
+        stops: [
+          s("09:00", "Hôtel Aramis Saint-Germain", "Hotel", "Start", "Leave the hotel.", 48.8487, 2.3263),
+          s("09:05", "Wani", "Breakfast", "35–40 min", "Modern coffee/brunch near the hotel. Alt: Les Deux Magots for the classic touristic breakfast.", 48.8493, 2.3244),
+          s("10:15", "Musée d’Orsay", "Museum", "2h15–2h30", "One of the strongest stops in the plan. Timed entry recommended.", 48.86, 2.3266),
+          s("12:45", "Hôtel des Invalides", "Sight", "30–45 min", "Short exterior stop unless you care about Napoleon/military history.", 48.8566, 2.3126),
+          s("13:30", "Le Relais de l’Entrecôte Saint-Germain", "Lunch", "75 min", "One steak-frites stop is enough. Lunch beats dinner for this.", 48.8542, 2.3339),
+          s("15:00", "Hôtel Aramis Saint-Germain — break", "Hotel", "45–60 min", "Reset before Montmartre and the final dinner.", 48.8487, 2.3263),
+          s("16:30", "Montmartre / Abbesses area", "Neighborhood", "60 min", "Metro/taxi from the hotel; don't walk this leg.", 48.884, 2.337),
+          s("17:30", "Sacré-Cœur", "Sight", "45–60 min", "Viewpoint + basilica + surrounding streets.", 48.8867, 2.3431),
+          s("19:15", "Hôtel Aramis Saint-Germain — refresh", "Hotel", "45–60 min", "Metro/taxi back. Change/rest before the final dinner.", 48.8487, 2.3263),
+          s("20:30", "Brasserie des Prés", "Dinner", "90 min", "Best final dinner option from your list. Reserve.", 48.8534, 2.3391),
+          s("22:30+", "Prescription Cocktail Club", "Cocktail bar", "Drinks", "Keeps the night near Saint-Germain and the hotel.", 48.8545, 2.338),
+          s("Late", "Hôtel Aramis Saint-Germain", "Hotel", "End", "Walkable from Saint-Germain; take a ride if tired.", 48.8487, 2.3263)
+        ]
+      }
+    ]
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  State + persistence                                                */
+/* ------------------------------------------------------------------ */
+const STORE_KEY = "paris-itinerary-v1";
+let data = load();
+let activeDay = 0;
+let editing = false;
+let mapVisible = false;
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.days) && parsed.days.length) return parsed;
+    }
+  } catch (e) { /* fall through to defaults */ }
+  return defaultData();
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+  catch (e) { console.warn("Could not save:", e); }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
+
+const CATS = [
+  { test: /hotel|aramis/i,            emoji: "🏨", color: "#6b7280" },
+  { test: /breakfast|coffee|caf/i,    emoji: "🥐", color: "#d97706" },
+  { test: /lunch/i,                   emoji: "🍽️", color: "#ea580c" },
+  { test: /dinner|brasserie/i,        emoji: "🍷", color: "#b91c1c" },
+  { test: /museum|louvre|orsay/i,     emoji: "🖼️", color: "#2563eb" },
+  { test: /viewpoint|trocad/i,        emoji: "📸", color: "#0891b2" },
+  { test: /walk|rest|garden|tuiler/i, emoji: "🌳", color: "#16a34a" },
+  { test: /neighbou?rhood|montmartre/i, emoji: "🏘️", color: "#ca8a04" },
+  { test: /jazz|bar|cocktail|club/i,  emoji: "🍸", color: "#db2777" },
+  { test: /shop/i,                    emoji: "🛍️", color: "#9333ea" },
+  { test: /sight|chapelle|notre|arc|eiffel|invalides|sacr/i, emoji: "⛪", color: "#7c3aed" }
+];
+function catStyle(cat) {
+  const c = String(cat || "");
+  for (const k of CATS) if (k.test.test(c)) return k;
+  return { emoji: "📍", color: "#555" };
+}
+
+/* Distance between two stops. Straight-line * 1.3 road factor; ~5 km/h. */
+function haversine(a, b) {
+  const R = 6371, toR = x => x * Math.PI / 180;
+  const dLat = toR(b.lat - a.lat), dLng = toR(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function legInfo(a, b) {
+  if (a.lat == null || b.lat == null) return { km: 0, min: 0, long: false, ok: false };
+  const km = haversine(a, b) * 1.3;
+  const min = Math.max(1, Math.round(km * 12.4));
+  return { km, min, long: km > 2.5, ok: true };
+}
+
+/* Maps deep links */
+function gDir(a, b) { return `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=walking`; }
+function aDir(a, b) { return `https://maps.apple.com/?saddr=${a.lat},${a.lng}&daddr=${b.lat},${b.lng}&dirflg=w`; }
+function gPlace(p) { return `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`; }
+function aPlace(p) { return `https://maps.apple.com/?ll=${p.lat},${p.lng}&q=${encodeURIComponent(p.title || "Stop")}`; }
+function gDayRoute(stops) {
+  const pts = stops.filter(x => x.lat != null).map(x => `${x.lat},${x.lng}`);
+  if (pts.length < 2) return null;
+  // trailing data=!3e2 forces walking mode for the multi-stop path route
+  return "https://www.google.com/maps/dir/" + pts.join("/") + "/data=!4m2!4m1!3e2";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rendering                                                          */
+/* ------------------------------------------------------------------ */
+const $ = id => document.getElementById(id);
+
+function renderTabs() {
+  $("tabs").innerHTML = data.days.map((d, i) =>
+    `<button class="tab ${i === activeDay ? "active" : ""}" data-day="${i}">${esc(d.label)}<small>${esc(d.date)}</small></button>`
+  ).join("");
+}
+
+function renderDayMeta() {
+  const day = data.days[activeDay];
+  const stops = day.stops;
+  let walkKm = 0, walkMin = 0;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const l = legInfo(stops[i], stops[i + 1]);
+    if (l.ok && !l.long) { walkKm += l.km; walkMin += l.min; }
+  }
+  const routeUrl = gDayRoute(stops);
+  $("dayMeta").innerHTML =
+    `<div class="day-title">${esc(day.title)}</div>` +
+    `<span class="chip"><b>${stops.length}</b> stops</span>` +
+    `<span class="chip">🚶 <b>${walkKm.toFixed(1)} km</b> · ${walkMin} min</span>` +
+    `<div class="day-actions">` +
+      `<button class="btn wide" id="toggleMap">${mapVisible ? "🗺️ Hide map" : "🗺️ Show map"}</button>` +
+      (routeUrl ? `<a class="btn wide" href="${routeUrl}" target="_blank" rel="noopener">↗ Whole day in Google Maps</a>` : "") +
+    `</div>`;
+}
+
+function stopCard(stop, index, day) {
+  const cs = catStyle(stop.category);
+  const hasLoc = stop.lat != null;
+  const venueLinks = hasLoc
+    ? `<div class="card-links">
+         <span style="font-size:12px;color:var(--muted)">Open place:</span>
+         <a class="mini" href="${gPlace(stop)}" target="_blank" rel="noopener"><b>Google</b></a>
+         <a class="mini" href="${aPlace(stop)}" target="_blank" rel="noopener"><b>Apple</b></a>
+       </div>` : "";
+  const editRow = editing
+    ? `<div class="edit-row">
+         <button class="icon-btn" data-act="up" data-i="${index}" ${index === 0 ? "disabled style=opacity:.35" : ""}>↑</button>
+         <button class="icon-btn" data-act="down" data-i="${index}" ${index === day.stops.length - 1 ? "disabled style=opacity:.35" : ""}>↓</button>
+         <button class="icon-btn" data-act="edit" data-i="${index}">✏️</button>
+         <span class="spacer"></span>
+         <button class="icon-btn del" data-act="del" data-i="${index}">🗑</button>
+       </div>` : "";
+  return `<div class="stop">
+    <div class="badge" style="background:${cs.color}">${index + 1}</div>
+    <div>
+      <div class="stop-head">
+        <span class="time">${esc(stop.time)}</span>
+        <span class="cat" style="color:${cs.color}">${cs.emoji} ${esc(stop.category)}</span>
+      </div>
+      <div class="name">${esc(stop.title)}</div>
+      ${stop.duration ? `<div class="dur">${esc(stop.duration)}</div>` : ""}
+      ${stop.note ? `<div class="note">${esc(stop.note)}</div>` : ""}
+      ${venueLinks}
+      ${editRow}
+    </div>
+  </div>`;
+}
+
+function legConnector(a, b) {
+  const l = legInfo(a, b);
+  if (!l.ok) return `<div class="leg"><div class="leg-info"><span class="leg-dist">Set a location on both stops to see the walk</span></div></div>`;
+  const label = l.long
+    ? `<span class="leg-dist long">🚕 ${l.km.toFixed(1)} km · metro/taxi faster (${l.min} min walk)</span>`
+    : `<span class="leg-dist">🚶 ${l.km.toFixed(1)} km · ${l.min} min walk</span>`;
+  return `<div class="leg">
+    <div class="leg-info">
+      ${label}
+      <span class="leg-btns">
+        <a class="dir g" href="${gDir(a, b)}" target="_blank" rel="noopener">🚶 Google</a>
+        <a class="dir a" href="${aDir(a, b)}" target="_blank" rel="noopener">Apple</a>
+      </span>
+    </div>
+  </div>`;
+}
+
+function renderStops() {
+  const day = data.days[activeDay];
+  const list = $("stopList");
+  if (!day.stops.length) {
+    list.innerHTML = `<div class="empty">No stops yet. Tap “Add a stop” below.</div>`;
+  } else {
+    let html = "";
+    day.stops.forEach((stop, i) => {
+      html += stopCard(stop, i, day);
+      if (i < day.stops.length - 1) {
+        html += legConnector(stop, day.stops[i + 1]);
+        if (editing) html += `<div class="leg-insert"><button data-act="insert" data-i="${i + 1}">＋ insert stop here</button></div>`;
+      }
+    });
+    list.innerHTML = html;
+  }
+  $("addStop").classList.toggle("hidden", !editing);
+}
+
+function render() {
+  renderTabs();
+  renderDayMeta();
+  renderStops();
+  $("editBtn").classList.toggle("on", editing);
+  if (mapVisible) renderMap();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Map (Leaflet, lazy)                                                */
+/* ------------------------------------------------------------------ */
+let map = null, mapLayer = null;
+function ensureMap() {
+  if (map || typeof L === "undefined") return map;
+  map = L.map("map", { scrollWheelZoom: false }).setView([48.857, 2.3455], 13);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap"
+  }).addTo(map);
+  mapLayer = L.layerGroup().addTo(map);
+  return map;
+}
+function renderMap() {
+  if (!ensureMap()) {
+    $("map").innerHTML = "<div style='padding:20px;color:#888;font-size:13px'>Map couldn't load (no connection). The list and directions buttons still work.</div>";
+    return;
+  }
+  mapLayer.clearLayers();
+  const day = data.days[activeDay];
+  const pts = [];
+  day.stops.forEach((st, i) => {
+    if (st.lat == null) return;
+    const cs = catStyle(st.category);
+    pts.push([st.lat, st.lng]);
+    L.marker([st.lat, st.lng])
+      .bindTooltip(String(i + 1), { permanent: true, direction: "center", className: "" })
+      .bindPopup(`<b>${i + 1} · ${esc(st.title)}</b><br>${esc(st.time)} · ${esc(st.category)}`)
+      .addTo(mapLayer);
+  });
+  if (pts.length > 1) L.polyline(pts, { weight: 4, opacity: .6, color: "#2f6feb" }).addTo(mapLayer);
+  if (pts.length) map.fitBounds(pts, { padding: [34, 34] });
+  setTimeout(() => map.invalidateSize(), 60);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Modal (add / edit)                                                 */
+/* ------------------------------------------------------------------ */
+let modalCtx = null; // { dayIndex, stopIndex|null, insertAt|null }
+
+function openModal(stopIndex, insertAt) {
+  const day = data.days[activeDay];
+  modalCtx = { dayIndex: activeDay, stopIndex: stopIndex == null ? null : stopIndex, insertAt: insertAt == null ? null : insertAt };
+  const isNew = stopIndex == null;
+  const st = isNew ? null : day.stops[stopIndex];
+  $("modalTitle").textContent = isNew ? "Add stop" : "Edit stop";
+  const g = (o, k) => (o && o[k] != null ? o[k] : "");
+  $("f-time").value = g(st, "time");
+  $("f-title").value = g(st, "title");
+  $("f-category").value = g(st, "category");
+  $("f-duration").value = g(st, "duration");
+  $("f-note").value = g(st, "note");
+  // Only pre-fill coordinates when editing an existing stop. New stops start
+  // blank so they aren't silently placed at the previous stop's location; the
+  // "Use the previous stop's location" button is there when that's wanted.
+  $("f-lat").value = st && st.lat != null ? st.lat : "";
+  $("f-lng").value = st && st.lng != null ? st.lng : "";
+  $("f-paste").value = "";
+  $("f-paste").style.borderColor = "";
+  $("fDelete").classList.toggle("hidden", isNew);
+  $("modal").classList.remove("hidden");
+  fitModal();
+  // Auto-focusing summons the on-screen keyboard on phones and jumps the layout,
+  // so only do it on larger pointer devices.
+  if (window.matchMedia("(min-width: 720px)").matches) $("f-title").focus();
+}
+function closeModal() {
+  const m = $("modal");
+  m.classList.add("hidden");
+  m.style.height = ""; m.style.top = ""; m.style.bottom = "";
+  modalCtx = null;
+}
+
+// Keep the bottom-sheet within the visible viewport when the mobile keyboard
+// opens, so Save/Cancel never end up hidden behind it.
+function fitModal() {
+  const m = $("modal");
+  if (m.classList.contains("hidden")) return;
+  const vv = window.visualViewport;
+  if (!vv) return;
+  m.style.height = vv.height + "px";
+  m.style.top = vv.offsetTop + "px";
+  m.style.bottom = "auto";
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", fitModal);
+  window.visualViewport.addEventListener("scroll", fitModal);
+}
+
+function parseCoords(text) {
+  if (!text) return null;
+  const t = text.trim();
+  let m = t.match(/@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/);          // google /@lat,lng
+  if (m) return { lat: +m[1], lng: +m[2] };
+  m = t.match(/!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/);            // google place data
+  if (m) return { lat: +m[1], lng: +m[2] };
+  m = t.match(/[?&#](?:q|ll|query|daddr|sll|center)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/i); // param=lat,lng
+  if (m) return { lat: +m[1], lng: +m[2] };
+  m = t.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);   // bare "lat, lng"
+  if (m) return { lat: +m[1], lng: +m[2] };
+  return null;
+}
+
+function saveModal() {
+  const day = data.days[modalCtx.dayIndex];
+  const title = $("f-title").value.trim();
+  if (!title) { $("f-title").focus(); return; }
+  const lat = num($("f-lat").value), lng = num($("f-lng").value);
+  const rec = {
+    time: $("f-time").value.trim() || "—",
+    title,
+    category: $("f-category").value.trim() || "Stop",
+    duration: $("f-duration").value.trim(),
+    note: $("f-note").value.trim(),
+    lat: lat, lng: lng
+  };
+  if (modalCtx.stopIndex != null) {
+    rec.id = day.stops[modalCtx.stopIndex].id;
+    day.stops[modalCtx.stopIndex] = rec;
+  } else {
+    rec.id = uid();
+    const at = modalCtx.insertAt != null ? modalCtx.insertAt : day.stops.length;
+    day.stops.splice(at, 0, rec);
+  }
+  save(); closeModal(); render();
+}
+
+function deleteStop() {
+  const day = data.days[modalCtx.dayIndex];
+  if (modalCtx.stopIndex != null) {
+    if (!confirm("Delete this stop?")) return;
+    day.stops.splice(modalCtx.stopIndex, 1);
+    save(); closeModal(); render();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Export / import / reset                                            */
+/* ------------------------------------------------------------------ */
+function exportData() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "paris-itinerary.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (!parsed || !Array.isArray(parsed.days) || !parsed.days.length) throw new Error("bad file");
+      data = parsed; activeDay = 0; save(); render();
+      alert("Itinerary imported.");
+    } catch (e) { alert("That file didn't look like a valid itinerary backup."); }
+  };
+  reader.readAsText(file);
+}
+function resetData() {
+  if (!confirm("Reset to the original plan? This erases your edits on this device.")) return;
+  data = defaultData(); activeDay = 0; editing = false; save(); render();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Events                                                             */
+/* ------------------------------------------------------------------ */
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  activeDay = +b.dataset.day; render();
+});
+
+$("editBtn").addEventListener("click", () => { editing = !editing; render(); });
+
+$("stopList").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const day = data.days[activeDay];
+  const i = +b.dataset.i;
+  const act = b.dataset.act;
+  if (act === "up" && i > 0) { [day.stops[i - 1], day.stops[i]] = [day.stops[i], day.stops[i - 1]]; save(); render(); }
+  else if (act === "down" && i < day.stops.length - 1) { [day.stops[i + 1], day.stops[i]] = [day.stops[i], day.stops[i + 1]]; save(); render(); }
+  else if (act === "edit") openModal(i, null);
+  else if (act === "del") { modalCtx = { dayIndex: activeDay, stopIndex: i, insertAt: null }; deleteStop(); }
+  else if (act === "insert") openModal(null, i);
+});
+
+$("addStop").addEventListener("click", () => openModal(null, null));
+
+$("dayMeta").addEventListener("click", e => {
+  if (e.target.closest("#toggleMap")) {
+    mapVisible = !mapVisible;
+    $("mapPanel").classList.toggle("hidden", !mapVisible);
+    renderDayMeta();
+    if (mapVisible) renderMap();
+  }
+});
+
+// Modal buttons
+$("fSave").addEventListener("click", saveModal);
+$("fCancel").addEventListener("click", closeModal);
+$("fClose").addEventListener("click", closeModal);
+$("fDelete").addEventListener("click", deleteStop);
+$("fUsePrev").addEventListener("click", () => {
+  const day = data.days[modalCtx.dayIndex];
+  const idx = modalCtx.stopIndex != null ? modalCtx.stopIndex - 1
+            : (modalCtx.insertAt != null ? modalCtx.insertAt - 1 : day.stops.length - 1);
+  const prev = day.stops[idx];
+  if (prev && prev.lat != null) { $("f-lat").value = prev.lat; $("f-lng").value = prev.lng; }
+});
+$("f-paste").addEventListener("input", e => {
+  const c = parseCoords(e.target.value);
+  if (c) { $("f-lat").value = c.lat; $("f-lng").value = c.lng; e.target.style.borderColor = "#16a34a"; }
+  else { e.target.style.borderColor = ""; }
+});
+$("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+
+// Overflow menu
+$("menuBtn").addEventListener("click", e => { e.stopPropagation(); $("menu").classList.toggle("hidden"); });
+document.addEventListener("click", () => $("menu").classList.add("hidden"));
+$("menu").addEventListener("click", e => e.stopPropagation());
+$("mExport").addEventListener("click", () => { $("menu").classList.add("hidden"); exportData(); });
+$("mImport").addEventListener("click", () => { $("menu").classList.add("hidden"); $("importFile").click(); });
+$("mPrint").addEventListener("click", () => { $("menu").classList.add("hidden"); window.print(); });
+$("mReset").addEventListener("click", () => { $("menu").classList.add("hidden"); resetData(); });
+$("importFile").addEventListener("change", e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; });
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); $("menu").classList.add("hidden"); } });
+
+render();
+</script>
+</body>
+</html>
