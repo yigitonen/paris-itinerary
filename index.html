@@ -22,6 +22,9 @@
     --accent: #2f6feb;
     --accent-soft: #eaf1ff;
     --danger: #c0392b;
+    --rose: #b5325a;
+    --rose-soft: #fff0f3;
+    --rose-line: #ffd3dd;
     --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 10px rgba(0,0,0,.04);
     --radius: 16px;
   }
@@ -47,6 +50,10 @@
   h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
   h1 .em { font-size: 22px; }
   .subtitle { color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .tripbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+  .countdown { background: var(--rose-soft); border: 1px solid var(--rose-line); color: var(--rose); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .love-note { font-size: 13px; font-style: italic; color: #8a4a5a; border-bottom: 1px dashed #e3b9c4; padding: 2px 3px; min-width: 130px; outline: none; }
+  .love-note:focus { border-bottom-color: var(--rose); background: var(--rose-soft); }
 
   /* ---------- Sticky toolbar ---------- */
   .toolbar {
@@ -112,6 +119,12 @@
   .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .btn.ghost { background: transparent; }
 
+  .dare-btn {
+    width: 100%; margin: 2px 0 14px; border: 1px solid var(--rose-line);
+    background: var(--rose-soft); color: var(--rose); font: inherit; font-size: 14px; font-weight: 700;
+    padding: 11px; border-radius: 12px; cursor: pointer;
+  }
+
   /* ---------- Map ---------- */
   #mapPanel { margin-bottom: 14px; }
   #map { height: 340px; width: 100%; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--soft); }
@@ -120,6 +133,7 @@
 
   /* ---------- Stop cards ---------- */
   .stop {
+    position: relative;
     background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
     box-shadow: var(--shadow); padding: 13px 14px;
     display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start;
@@ -128,17 +142,28 @@
     width: 30px; height: 30px; border-radius: 9px; color: #fff; font-weight: 800; font-size: 13px;
     display: flex; align-items: center; justify-content: center; margin-top: 2px;
   }
-  .stop-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .stop-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-right: 30px; }
   .time { font-size: 13px; font-weight: 750; color: var(--ink); font-variant-numeric: tabular-nums; }
   .cat { font-size: 12px; font-weight: 650; }
-  .name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin-top: 1px; }
+  .name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin-top: 1px; padding-right: 30px; }
   .dur { font-size: 12px; color: var(--muted); margin-top: 1px; }
   .note { font-size: 13.5px; color: #3a3a3a; margin-top: 6px; line-height: 1.42; }
+  .tip { margin-top: 8px; font-size: 13px; line-height: 1.4; background: #fff7da; border: 1px solid #f0db8c; color: #6b551a; border-radius: 10px; padding: 8px 10px; }
+
+  .heart {
+    position: absolute; top: 9px; right: 9px; width: 36px; height: 36px; border: 0;
+    background: transparent; font-size: 20px; line-height: 1; cursor: pointer; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .heart:active { transform: scale(1.25); }
 
   .card-links { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  .card-links .lbl { font-size: 12px; color: var(--muted); }
   .mini { font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--soft); }
   .mini:active { background: var(--line); }
   .mini b { color: var(--ink); font-weight: 650; }
+  .mini.tt { background: #111; color: #fff; border-color: #111; }
+  .mini.tt b { color: #fff; }
 
   .edit-row { display: flex; gap: 6px; margin-top: 10px; }
   .edit-row .icon-btn { width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
@@ -205,13 +230,20 @@
   .modal-btns .spacer { flex: 1; }
   .modal-btns .btn { padding: 11px 16px; font-size: 14px; }
 
+  /* ---------- Dare popup ---------- */
+  .dare-pop { position: fixed; inset: 0; z-index: 1100; background: rgba(20,20,20,.45); display: flex; align-items: center; justify-content: center; padding: 22px; }
+  .dare-card { background: #fff; border-radius: 18px; max-width: 420px; width: 100%; padding: 24px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: center; }
+  .dare-card .k { font-size: 12px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--rose); }
+  .dare-card .txt { font-size: 20px; line-height: 1.35; margin: 12px 0 20px; font-weight: 650; }
+  .dare-card .row { display: flex; gap: 10px; }
+
   @media (min-width: 720px) {
     #map { height: 420px; }
     .modal { align-items: center; }
     .modal-card { border-radius: 18px; }
   }
   @media print {
-    .toolbar, .day-actions, .edit-row, .leg-insert, .add-stop, #mapPanel { display: none !important; }
+    .toolbar, .day-actions, .edit-row, .leg-insert, .add-stop, .dare-btn, .heart, #mapPanel { display: none !important; }
     .stop, .leg { break-inside: avoid; }
   }
 </style>
@@ -223,6 +255,10 @@
     <div class="subtitle">
       15–17 July 2026 · based at Hôtel Aramis Saint-Germain. Tap any leg for walking directions in
       Google or Apple Maps. Tap <b>Edit ✏️</b> to add, remove or reorder stops — changes are saved on this device.
+    </div>
+    <div class="tripbar">
+      <span class="countdown" id="countdown"></span>
+      <span class="love-note" id="loveNote" contenteditable="true" spellcheck="false" role="textbox" aria-label="Love note"></span>
     </div>
   </header>
 
@@ -247,6 +283,7 @@
       <div class="map-note">Lines are straight-line overviews. Tap a leg's <b>Google</b> or <b>Apple</b> button for real walking directions.</div>
     </div>
     <div class="day-meta" id="dayMeta"></div>
+    <button class="dare-btn" id="dareBtn">🎡 Spin a date dare</button>
     <div id="stopList"></div>
     <button class="add-stop hidden" id="addStop">＋ Add a stop to this day</button>
   </div>
@@ -287,6 +324,18 @@
   </div>
 </div>
 
+<!-- Date-dare popup -->
+<div class="dare-pop hidden" id="darePop">
+  <div class="dare-card">
+    <div class="k">Paris dare 🎡</div>
+    <div class="txt" id="dareTxt"></div>
+    <div class="row">
+      <button class="btn wide ghost" id="dareAgain">↻ Spin again</button>
+      <button class="btn wide primary" id="dareClose">Love it</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="importFile" accept="application/json,.json" class="hidden"/>
 
 <script>
@@ -305,6 +354,7 @@ function uid() { _idc += 1; return "s" + Date.now().toString(36) + (_idc) + Math
 function defaultData() {
   return {
     version: 1,
+    loveNote: "Paris, just the two of us 💕",
     days: [
       {
         id: "d1", label: "Day 1", date: "15 Jul", title: "Classic Paris day",
@@ -413,16 +463,46 @@ function legInfo(a, b) {
   return { km, min, long: km > 2.5, ok: true };
 }
 
-/* Maps deep links */
+/* Strip descriptive suffixes ("— break", "/ Odéon area") so searches hit the real place. */
+function searchName(t) { return String(t || "").split(/\s+[—/]\s+/)[0].trim(); }
+
+/* Maps deep links. Directions use coordinates (reliable); "open place" uses the
+   NAME so Maps shows the real place page with photos/reviews, not a bare pin. */
 function gDir(a, b) { return `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=walking`; }
 function aDir(a, b) { return `https://maps.apple.com/?saddr=${a.lat},${a.lng}&daddr=${b.lat},${b.lng}&dirflg=w`; }
-function gPlace(p) { return `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`; }
-function aPlace(p) { return `https://maps.apple.com/?ll=${p.lat},${p.lng}&q=${encodeURIComponent(p.title || "Stop")}`; }
+function gPlace(p) { return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchName(p.title) + " Paris")}`; }
+function aPlace(p) {
+  const base = `https://maps.apple.com/?q=${encodeURIComponent(searchName(p.title))}`;
+  return p.lat != null ? `${base}&sll=${p.lat},${p.lng}` : base; // sll biases the search near the stop
+}
+function tiktok(p) { return `https://www.tiktok.com/search?q=${encodeURIComponent(searchName(p.title) + " Paris")}`; }
 function gDayRoute(stops) {
   const pts = stops.filter(x => x.lat != null).map(x => `${x.lat},${x.lng}`);
   if (pts.length < 2) return null;
   // trailing data=!3e2 forces walking mode for the multi-stop path route
   return "https://www.google.com/maps/dir/" + pts.join("/") + "/data=!4m2!4m1!3e2";
+}
+
+/* After dark the Eiffel Tower sparkles 5 min every hour, on the hour. */
+function sparkleTip(stop) {
+  if (/eiffel/i.test(stop.title)) return "✨ After dark the tower sparkles for 5 minutes every hour, right on the hour. Look up at :00.";
+  if (/trocad/i.test(stop.title)) return "✨ The best Eiffel view in the city — get here just before :00 after dark to catch the 5-minute sparkle show.";
+  return "";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Countdown + love note                                              */
+/* ------------------------------------------------------------------ */
+function daysUntil() {
+  const trip = new Date(2026, 6, 15); // 15 July 2026 (month is 0-indexed)
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const d = Math.round((trip - today) / 86400000);
+  if (d > 1) return `${d} days until Paris ✨`;
+  if (d === 1) return "1 day until Paris ✨";
+  if (d === 0) return "Bonjour Paris — today's the day! 💕";
+  if (d >= -2) return "Enjoy Paris, you two 💕";
+  return "Paris, forever 💕";
 }
 
 /* ------------------------------------------------------------------ */
@@ -457,13 +537,13 @@ function renderDayMeta() {
 
 function stopCard(stop, index, day) {
   const cs = catStyle(stop.category);
-  const hasLoc = stop.lat != null;
-  const venueLinks = hasLoc
-    ? `<div class="card-links">
-         <span style="font-size:12px;color:var(--muted)">Open place:</span>
-         <a class="mini" href="${gPlace(stop)}" target="_blank" rel="noopener"><b>Google</b></a>
+  const tip = sparkleTip(stop);
+  const venueLinks = `<div class="card-links">
+         <span class="lbl">See it:</span>
+         <a class="mini" href="${gPlace(stop)}" target="_blank" rel="noopener">🔎 <b>Google</b></a>
          <a class="mini" href="${aPlace(stop)}" target="_blank" rel="noopener"><b>Apple</b></a>
-       </div>` : "";
+         <a class="mini tt" href="${tiktok(stop)}" target="_blank" rel="noopener">▶ <b>TikTok</b></a>
+       </div>`;
   const editRow = editing
     ? `<div class="edit-row">
          <button class="icon-btn" data-act="up" data-i="${index}" ${index === 0 ? "disabled style=opacity:.35" : ""}>↑</button>
@@ -482,9 +562,11 @@ function stopCard(stop, index, day) {
       <div class="name">${esc(stop.title)}</div>
       ${stop.duration ? `<div class="dur">${esc(stop.duration)}</div>` : ""}
       ${stop.note ? `<div class="note">${esc(stop.note)}</div>` : ""}
+      ${tip ? `<div class="tip">${esc(tip)}</div>` : ""}
       ${venueLinks}
       ${editRow}
     </div>
+    <button class="heart" data-act="heart" data-i="${index}" aria-label="Mark photo taken">${stop.snapped ? "❤️" : "🤍"}</button>
   </div>`;
 }
 
@@ -529,6 +611,10 @@ function render() {
   renderDayMeta();
   renderStops();
   $("editBtn").classList.toggle("on", editing);
+  $("countdown").textContent = daysUntil();
+  if (document.activeElement !== $("loveNote")) {
+    $("loveNote").textContent = (data.loveNote != null && data.loveNote !== "") ? data.loveNote : "Paris, just the two of us 💕";
+  }
   if (mapVisible) renderMap();
 }
 
@@ -555,7 +641,6 @@ function renderMap() {
   const pts = [];
   day.stops.forEach((st, i) => {
     if (st.lat == null) return;
-    const cs = catStyle(st.category);
     pts.push([st.lat, st.lng]);
     L.marker([st.lat, st.lng])
       .bindTooltip(String(i + 1), { permanent: true, direction: "center", className: "" })
@@ -649,7 +734,9 @@ function saveModal() {
     lat: lat, lng: lng
   };
   if (modalCtx.stopIndex != null) {
-    rec.id = day.stops[modalCtx.stopIndex].id;
+    const old = day.stops[modalCtx.stopIndex];
+    rec.id = old.id;
+    if (old.snapped) rec.snapped = true;
     day.stops[modalCtx.stopIndex] = rec;
   } else {
     rec.id = uid();
@@ -666,6 +753,36 @@ function deleteStop() {
     day.stops.splice(modalCtx.stopIndex, 1);
     save(); closeModal(); render();
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Date dares                                                         */
+/* ------------------------------------------------------------------ */
+const DARES = [
+  "Let your partner order for you at the next stop 🍽️",
+  "Kiss at the top of the hour ⏰💋",
+  "Take the classic 'pinching the Eiffel Tower' photo 🗼🤏",
+  "Buy each other the most random pastry you can find 🥐",
+  "Speak only in your best (worst) French accent for 10 minutes 🇫🇷",
+  "Find the ugliest souvenir and gift it to your partner 🎁",
+  "Slow-dance for 30 seconds, wherever you are 💃🕺",
+  "Write your partner a 3-word love note, right now 💌",
+  "Ask a stranger to take a photo of you two 📸",
+  "Swap sunglasses or hats until the next stop 🕶️",
+  "Recreate a cheesy movie-poster pose 🎬",
+  "Share one dessert — no forks, just spoons 🍰",
+  "Compliment your partner in three languages 🌍",
+  "Hold hands the whole walk to the next stop ✋",
+  "Pick a song, hum it, make the other guess it 🎶",
+  "Whisper your favourite memory of this trip so far 🥰"
+];
+let lastDare = -1;
+function spinDare() {
+  let i;
+  do { i = Math.floor(Math.random() * DARES.length); } while (DARES.length > 1 && i === lastDare);
+  lastDare = i;
+  $("dareTxt").textContent = DARES[i];
+  $("darePop").classList.remove("hidden");
 }
 
 /* ------------------------------------------------------------------ */
@@ -716,6 +833,7 @@ $("stopList").addEventListener("click", e => {
   else if (act === "edit") openModal(i, null);
   else if (act === "del") { modalCtx = { dayIndex: activeDay, stopIndex: i, insertAt: null }; deleteStop(); }
   else if (act === "insert") openModal(null, i);
+  else if (act === "heart") { day.stops[i].snapped = !day.stops[i].snapped; save(); render(); }
 });
 
 $("addStop").addEventListener("click", () => openModal(null, null));
@@ -748,6 +866,15 @@ $("f-paste").addEventListener("input", e => {
 });
 $("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
 
+// Date dares
+$("dareBtn").addEventListener("click", spinDare);
+$("dareAgain").addEventListener("click", spinDare);
+$("dareClose").addEventListener("click", () => $("darePop").classList.add("hidden"));
+$("darePop").addEventListener("click", e => { if (e.target.id === "darePop") $("darePop").classList.add("hidden"); });
+
+// Love note (editable, saved on blur)
+$("loveNote").addEventListener("blur", () => { data.loveNote = $("loveNote").textContent.trim(); save(); });
+
 // Overflow menu
 $("menuBtn").addEventListener("click", e => { e.stopPropagation(); $("menu").classList.toggle("hidden"); });
 document.addEventListener("click", () => $("menu").classList.add("hidden"));
@@ -758,7 +885,9 @@ $("mPrint").addEventListener("click", () => { $("menu").classList.add("hidden");
 $("mReset").addEventListener("click", () => { $("menu").classList.add("hidden"); resetData(); });
 $("importFile").addEventListener("change", e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; });
 
-document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); $("menu").classList.add("hidden"); } });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeModal(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); }
+});
 
 render();
 </script>
