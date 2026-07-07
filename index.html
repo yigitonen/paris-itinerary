@@ -159,7 +159,7 @@
 
   .card-links { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
   .card-links .lbl { font-size: 12px; color: var(--muted); }
-  .mini { font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--soft); }
+  .mini { font-family: inherit; font-size: 12px; line-height: 1.3; cursor: pointer; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--soft); }
   .mini:active { background: var(--line); }
   .mini b { color: var(--ink); font-weight: 650; }
   .mini.tt { background: #111; color: #fff; border-color: #111; }
@@ -475,7 +475,23 @@ function aPlace(p) {
   const base = `https://maps.apple.com/?q=${encodeURIComponent(searchName(p.title))}`;
   return p.lat != null ? `${base}&sll=${p.lat},${p.lng}` : base; // sll biases the search near the stop
 }
-function tiktok(p) { return `https://www.tiktok.com/search?q=${encodeURIComponent(searchName(p.title) + " Paris")}`; }
+// A plain https link only ever opens the TikTok website. To jump into the app we
+// use its scheme; if the app doesn't take over (not installed / desktop), fall
+// back to the website search after a short delay.
+function openTikTok(query) {
+  const web = "https://www.tiktok.com/search?q=" + encodeURIComponent(query);
+  const ua = navigator.userAgent || "";
+  const isAndroid = /Android/i.test(ua);
+  const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  if (!isAndroid && !isIOS) { window.open(web, "_blank"); return; }
+  const app = "snssdk1233://search?keyword=" + encodeURIComponent(query); // TikTok (international)
+  let done = false;
+  const timer = setTimeout(() => { if (!done) { done = true; window.location.href = web; } }, 1100);
+  // If the app opens, the page is backgrounded — cancel the web fallback.
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { done = true; clearTimeout(timer); } }, { once: true });
+  window.addEventListener("pagehide", () => { done = true; clearTimeout(timer); }, { once: true });
+  window.location.href = app;
+}
 function gDayRoute(stops) {
   const pts = stops.filter(x => x.lat != null).map(x => `${x.lat},${x.lng}`);
   if (pts.length < 2) return null;
@@ -542,7 +558,7 @@ function stopCard(stop, index, day) {
          <span class="lbl">See it:</span>
          <a class="mini" href="${gPlace(stop)}" target="_blank" rel="noopener">🔎 <b>Google</b></a>
          <a class="mini" href="${aPlace(stop)}" target="_blank" rel="noopener"><b>Apple</b></a>
-         <a class="mini tt" href="${tiktok(stop)}" target="_blank" rel="noopener">▶ <b>TikTok</b></a>
+         <button class="mini tt" type="button" data-act="tiktok" data-i="${index}">▶ <b>TikTok</b></button>
        </div>`;
   const editRow = editing
     ? `<div class="edit-row">
@@ -834,6 +850,7 @@ $("stopList").addEventListener("click", e => {
   else if (act === "del") { modalCtx = { dayIndex: activeDay, stopIndex: i, insertAt: null }; deleteStop(); }
   else if (act === "insert") openModal(null, i);
   else if (act === "heart") { day.stops[i].snapped = !day.stops[i].snapped; save(); render(); }
+  else if (act === "tiktok") openTikTok(searchName(day.stops[i].title) + " Paris");
 });
 
 $("addStop").addEventListener("click", () => openModal(null, null));
