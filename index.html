@@ -237,6 +237,45 @@
   .dare-card .txt { font-size: 20px; line-height: 1.35; margin: 12px 0 20px; font-weight: 650; }
   .dare-card .row { display: flex; gap: 10px; }
 
+  /* ---------- Now / running late ---------- */
+  .stop.now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow); }
+  .now-pill { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; }
+  .now-bar { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; background: var(--accent-soft); border: 1px solid #cfe0ff; color: #1b48b3; border-radius: 12px; padding: 9px 12px; font-size: 13px; margin-top: 2px; }
+  .now-bar .btn { padding: 7px 10px; font-size: 12.5px; margin-left: auto; }
+
+  /* ---------- Booked chip ---------- */
+  .booked { background: #e7f6ec; border: 1px solid #b7e4c7; color: #1a7f3c; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+
+  /* ---------- Memory on card ---------- */
+  .memory { margin-top: 10px; display: flex; gap: 10px; align-items: flex-start; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+  .memory img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
+  .memory .mtxt { font-size: 13px; line-height: 1.4; }
+
+  /* ---------- Full-screen sheet ---------- */
+  .sheet { position: fixed; inset: 0; z-index: 1050; background: var(--bg); overflow-y: auto; }
+  .sheet-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 12px 14px; padding-top: calc(12px + env(safe-area-inset-top)); background: rgba(246,244,238,.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .sheet-body { padding: 16px; max-width: 780px; margin: 0 auto; }
+  .sheet-body .sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.45; }
+  .sheet-body h4 { margin: 18px 0 10px; font-size: 15px; }
+  .stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+  .stamp { aspect-ratio: 1 / 1; border-radius: 14px; border: 1px dashed var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 10.5px; color: var(--muted); padding: 6px; line-height: 1.2; gap: 4px; }
+  .stamp.on { border-style: solid; border-color: var(--rose-line); background: var(--rose-soft); color: var(--rose); font-weight: 700; }
+  .stamp .st-emoji { font-size: 22px; }
+  .journal { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .journal img { width: 84px; height: 84px; object-fit: cover; border-radius: 12px; flex: 0 0 auto; }
+  .journal .j-title { font-weight: 700; font-size: 14px; }
+  .journal .j-day { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .journal .j-memo { font-size: 13.5px; margin-top: 4px; line-height: 1.4; }
+  .bk-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .bk-check { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: #1a7f3c; font-weight: 800; cursor: pointer; font-size: 15px; }
+  .bk-check.on { background: #e7f6ec; border-color: #b7e4c7; }
+  .bk-main { flex: 1; }
+  .bk-title { font-size: 13.5px; font-weight: 650; margin-bottom: 5px; }
+  .bk-conf { width: 100%; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; }
+  .phr table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .phr td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .phr td:first-child { font-weight: 650; width: 46%; }
+
   @media (min-width: 720px) {
     #map { height: 420px; }
     .modal { align-items: center; }
@@ -268,6 +307,11 @@
     <div class="menu-wrap">
       <button class="icon-btn" id="menuBtn" title="More" aria-label="More options">⋯</button>
       <div class="menu hidden" id="menu">
+        <button id="mMemories">💞 &nbsp;Memories &amp; stamps</button>
+        <button id="mBookings">🎟 &nbsp;Bookings</button>
+        <button id="mPhrases">🗣 &nbsp;Phrasebook &amp; tipping</button>
+        <button id="mPlaylist">🎶 &nbsp;Paris playlist</button>
+        <hr/>
         <button id="mExport">⤓ &nbsp;Backup / export</button>
         <button id="mImport">⤒ &nbsp;Import backup</button>
         <button id="mPrint">🖨 &nbsp;Print / save as PDF</button>
@@ -332,6 +376,31 @@
     <div class="row">
       <button class="btn wide ghost" id="dareAgain">↻ Spin again</button>
       <button class="btn wide primary" id="dareClose">Love it</button>
+    </div>
+  </div>
+</div>
+
+<!-- Full-screen sheet: memories / bookings / phrasebook -->
+<div class="sheet hidden" id="sheet">
+  <div class="sheet-head">
+    <button class="icon-btn" id="sheetBack" aria-label="Back">←</button>
+    <h2 id="sheetTitle" style="font-size:18px;margin:0;letter-spacing:-.01em"></h2>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- Memory editor (photo + note) -->
+<div class="modal hidden" id="memModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="memTitle">Memory</h3><button class="icon-btn" id="memClose" aria-label="Close">✕</button></div>
+    <div class="field"><label>Photo</label><input type="file" id="memPhoto" accept="image/*"/></div>
+    <div id="memPreviewWrap" class="hidden" style="margin-bottom:12px"><img id="memPreview" alt="" style="max-width:100%;border-radius:12px;display:block"/></div>
+    <div class="field"><label>A little note</label><textarea id="memNote" placeholder="What made this stop special?"></textarea></div>
+    <div class="modal-btns">
+      <button class="btn ghost danger hidden" id="memRemove">Remove</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="memCancel">Cancel</button>
+      <button class="btn primary" id="memSave">Save</button>
     </div>
   </div>
 </div>
@@ -404,6 +473,7 @@ let data = load();
 let activeDay = 0;
 let editing = false;
 let mapVisible = false;
+let nowStopIdx = null;
 
 function load() {
   try {
@@ -416,8 +486,8 @@ function load() {
   return defaultData();
 }
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
-  catch (e) { console.warn("Could not save:", e); }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); return true; }
+  catch (e) { console.warn("Could not save:", e); return false; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -461,6 +531,35 @@ function legInfo(a, b) {
   const km = haversine(a, b) * 1.3;
   const min = Math.max(1, Math.round(km * 12.4));
   return { km, min, long: km > 2.5, ok: true };
+}
+
+/* Parse "HH:MM" (ignoring any suffix like "+") to minutes-since-midnight, or null. */
+function parseMin(t) {
+  const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+function fmtMin(mins) {
+  mins = ((mins % 1440) + 1440) % 1440;
+  return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
+}
+/* Index of the stop you should be at right now (last one whose time has passed). */
+function nowStopFor(stops) {
+  const d = new Date();
+  const cur = d.getHours() * 60 + d.getMinutes();
+  let idx = null;
+  for (let i = 0; i < stops.length; i++) {
+    const t = parseMin(stops[i].time);
+    if (t != null && t <= cur) idx = i;
+  }
+  return idx;
+}
+/* Push every timed stop from fromIndex onward by delta minutes (keeps suffixes). */
+function shiftTimes(stops, fromIndex, delta) {
+  for (let i = fromIndex; i < stops.length; i++) {
+    const mt = String(stops[i].time || "").match(/^(\d{1,2}):(\d{2})(.*)$/);
+    if (!mt) continue;
+    stops[i].time = fmtMin((+mt[1]) * 60 + (+mt[2]) + delta) + (mt[3] || "");
+  }
 }
 
 /* Strip descriptive suffixes ("— break", "/ Odéon area") so searches hit the real place. */
@@ -541,6 +640,7 @@ function renderDayMeta() {
     if (l.ok && !l.long) { walkKm += l.km; walkMin += l.min; }
   }
   const routeUrl = gDayRoute(stops);
+  nowStopIdx = nowStopFor(stops);
   $("dayMeta").innerHTML =
     `<div class="day-title">${esc(day.title)}</div>` +
     `<span class="chip"><b>${stops.length}</b> stops</span>` +
@@ -548,7 +648,10 @@ function renderDayMeta() {
     `<div class="day-actions">` +
       `<button class="btn wide" id="toggleMap">${mapVisible ? "🗺️ Hide map" : "🗺️ Show map"}</button>` +
       (routeUrl ? `<a class="btn wide" href="${routeUrl}" target="_blank" rel="noopener">↗ Whole day in Google Maps</a>` : "") +
-    `</div>`;
+    `</div>` +
+    (nowStopIdx != null
+      ? `<div class="now-bar">● Around <b>&nbsp;stop ${nowStopIdx + 1}&nbsp;</b> right now<button class="btn" id="shiftBtn">🕐 Running late? +30 min</button></div>`
+      : "");
 }
 
 function stopCard(stop, index, day) {
@@ -560,6 +663,9 @@ function stopCard(stop, index, day) {
          <a class="mini" href="${aPlace(stop)}" target="_blank" rel="noopener"><b>Apple</b></a>
          <button class="mini tt" type="button" data-act="tiktok" data-i="${index}">▶ <b>TikTok</b></button>
        </div>`;
+  const memBlock = (stop.photo || stop.memo)
+    ? `<div class="memory">${stop.photo ? `<img src="${stop.photo}" alt="">` : ""}<div class="mtxt">${stop.memo ? esc(stop.memo) : ""}<div style="margin-top:6px"><button class="mini" type="button" data-act="mem" data-i="${index}">✏️ Edit memory</button></div></div></div>`
+    : `<div style="margin-top:10px"><button class="mini" type="button" data-act="mem" data-i="${index}">📷 Add a memory</button></div>`;
   const editRow = editing
     ? `<div class="edit-row">
          <button class="icon-btn" data-act="up" data-i="${index}" ${index === 0 ? "disabled style=opacity:.35" : ""}>↑</button>
@@ -568,21 +674,24 @@ function stopCard(stop, index, day) {
          <span class="spacer"></span>
          <button class="icon-btn del" data-act="del" data-i="${index}">🗑</button>
        </div>` : "";
-  return `<div class="stop">
+  return `<div class="stop ${index === nowStopIdx ? "now" : ""}">
     <div class="badge" style="background:${cs.color}">${index + 1}</div>
     <div>
       <div class="stop-head">
         <span class="time">${esc(stop.time)}</span>
         <span class="cat" style="color:${cs.color}">${cs.emoji} ${esc(stop.category)}</span>
+        ${index === nowStopIdx ? `<span class="now-pill">● NOW</span>` : ""}
+        ${stop.booked ? `<span class="booked">✓ Booked</span>` : ""}
       </div>
       <div class="name">${esc(stop.title)}</div>
       ${stop.duration ? `<div class="dur">${esc(stop.duration)}</div>` : ""}
       ${stop.note ? `<div class="note">${esc(stop.note)}</div>` : ""}
       ${tip ? `<div class="tip">${esc(tip)}</div>` : ""}
       ${venueLinks}
+      ${memBlock}
       ${editRow}
     </div>
-    <button class="heart" data-act="heart" data-i="${index}" aria-label="Mark photo taken">${stop.snapped ? "❤️" : "🤍"}</button>
+    <button class="heart" data-act="heart" data-i="${index}" aria-label="Mark visited">${stop.snapped ? "❤️" : "🤍"}</button>
   </div>`;
 }
 
@@ -752,7 +861,8 @@ function saveModal() {
   if (modalCtx.stopIndex != null) {
     const old = day.stops[modalCtx.stopIndex];
     rec.id = old.id;
-    if (old.snapped) rec.snapped = true;
+    // preserve fields the edit form doesn't touch
+    ["snapped", "booked", "confirm", "photo", "memo"].forEach(k => { if (old[k] != null) rec[k] = old[k]; });
     day.stops[modalCtx.stopIndex] = rec;
   } else {
     rec.id = uid();
@@ -800,6 +910,163 @@ function spinDare() {
   $("dareTxt").textContent = DARES[i];
   $("darePop").classList.remove("hidden");
 }
+
+/* ------------------------------------------------------------------ */
+/*  Memories (photo + note)                                            */
+/* ------------------------------------------------------------------ */
+function readImage(file, cb) {
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 720; let w = img.width, h = img.height;
+      if (w > h && w > max) { h = Math.round(h * max / w); w = max; }
+      else if (h > max) { w = Math.round(w * max / h); h = max; }
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      try { cb(c.toDataURL("image/jpeg", 0.7)); } catch (e) { cb(null); }
+    };
+    img.onerror = () => cb(null);
+    img.src = r.result;
+  };
+  r.onerror = () => cb(null);
+  r.readAsDataURL(file);
+}
+let memCtx = null, memPhoto;
+function openMem(dayIndex, stopIndex) {
+  memCtx = { dayIndex, stopIndex };
+  const st = data.days[dayIndex].stops[stopIndex];
+  memPhoto = undefined; // undefined = keep as-is, null = remove, string = new
+  $("memTitle").textContent = "Memory · " + st.title;
+  $("memPhoto").value = "";
+  $("memNote").value = st.memo || "";
+  if (st.photo) { $("memPreview").src = st.photo; $("memPreviewWrap").classList.remove("hidden"); }
+  else { $("memPreview").removeAttribute("src"); $("memPreviewWrap").classList.add("hidden"); }
+  $("memRemove").classList.toggle("hidden", !(st.photo || st.memo));
+  $("memModal").classList.remove("hidden");
+}
+function closeMem() { $("memModal").classList.add("hidden"); memCtx = null; }
+function saveMem() {
+  const st = data.days[memCtx.dayIndex].stops[memCtx.stopIndex];
+  const prevPhoto = st.photo;
+  if (memPhoto !== undefined) { if (memPhoto) st.photo = memPhoto; else delete st.photo; }
+  const note = $("memNote").value.trim();
+  if (note) st.memo = note; else delete st.memo;
+  if (!save()) {
+    if (prevPhoto) st.photo = prevPhoto; else delete st.photo; // revert the big field, keep note
+    save();
+    alert("This page's storage is full — try a smaller photo or remove a few.");
+    return;
+  }
+  closeMem(); render();
+}
+function removeMem() {
+  const st = data.days[memCtx.dayIndex].stops[memCtx.stopIndex];
+  delete st.photo; delete st.memo; save(); closeMem(); render();
+}
+$("memPhoto").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  readImage(f, d => {
+    if (!d) { alert("Couldn't read that image."); return; }
+    memPhoto = d; $("memPreview").src = d; $("memPreviewWrap").classList.remove("hidden");
+  });
+});
+$("memSave").addEventListener("click", saveMem);
+$("memCancel").addEventListener("click", closeMem);
+$("memClose").addEventListener("click", closeMem);
+$("memRemove").addEventListener("click", removeMem);
+$("memModal").addEventListener("click", e => { if (e.target.id === "memModal") closeMem(); });
+
+/* ------------------------------------------------------------------ */
+/*  Full-screen sheets: memories / bookings / phrasebook               */
+/* ------------------------------------------------------------------ */
+function openSheet(title, html) { $("sheetTitle").textContent = title; $("sheetBody").innerHTML = html; $("sheet").classList.remove("hidden"); $("sheet").scrollTop = 0; }
+function closeSheet() { $("sheet").classList.add("hidden"); }
+
+function openMemories() {
+  const all = [];
+  data.days.forEach(d => d.stops.forEach(st => all.push({ st, day: d })));
+  const collected = all.filter(x => x.st.snapped).length;
+  let html = `<p class="sub">Tap the ♡ on any stop to collect its stamp. <b>${collected}/${all.length}</b> collected.</p><div class="stamps">`;
+  all.forEach(x => {
+    const cs = catStyle(x.st.category);
+    html += `<div class="stamp ${x.st.snapped ? "on" : ""}"><div class="st-emoji">${x.st.snapped ? cs.emoji : "▫️"}</div><div>${esc(searchName(x.st.title))}</div></div>`;
+  });
+  html += `</div><h4>Photo journal</h4>`;
+  const mems = all.filter(x => x.st.photo || x.st.memo);
+  if (!mems.length) html += `<p class="sub">No memories yet — on any stop tap “📷 Add a memory”.</p>`;
+  mems.forEach(x => {
+    html += `<div class="journal">${x.st.photo ? `<img src="${x.st.photo}" alt="">` : ""}<div><div class="j-title">${esc(x.st.title)} <span class="j-day">· ${esc(x.day.date)}</span></div>${x.st.memo ? `<div class="j-memo">${esc(x.st.memo)}</div>` : ""}</div></div>`;
+  });
+  openSheet("Memories & stamps 💞", html);
+}
+
+function openBookings() {
+  let html = `<p class="sub">Tap the box when booked, and paste a confirmation link or number. Priority: Sainte-Chapelle, Louvre, Musée d’Orsay, then the two dinners.</p>`;
+  data.days.forEach((day, di) => {
+    html += `<h4>${esc(day.label)} · ${esc(day.date)}</h4>`;
+    day.stops.forEach((st, si) => {
+      html += `<div class="bk-row">
+        <button class="bk-check ${st.booked ? "on" : ""}" data-bk="${di}:${si}">${st.booked ? "✓" : ""}</button>
+        <div class="bk-main">
+          <div class="bk-title">${esc(st.time)} · ${esc(st.title)}</div>
+          <input class="bk-conf" data-conf="${di}:${si}" placeholder="Confirmation link or number" value="${esc(st.confirm || "")}"/>
+        </div>
+      </div>`;
+    });
+  });
+  openSheet("Bookings 🎟", html);
+}
+
+function openPhrases() {
+  const html = `<div class="phr">
+    <p class="sub">A few words go a long way — and always open with “Bonjour” before anything else.</p>
+    <h4>Essentials</h4>
+    <table>
+      <tr><td>Hello / Goodbye</td><td>Bonjour / Au revoir</td></tr>
+      <tr><td>Please / Thank you</td><td>S'il vous plaît / Merci</td></tr>
+      <tr><td>Excuse me / Sorry</td><td>Excusez-moi / Pardon</td></tr>
+      <tr><td>Do you speak English?</td><td>Parlez-vous anglais&nbsp;?</td></tr>
+      <tr><td>I don't understand</td><td>Je ne comprends pas</td></tr>
+    </table>
+    <h4>Eating &amp; paying</h4>
+    <table>
+      <tr><td>A table for two</td><td>Une table pour deux</td></tr>
+      <tr><td>The menu, please</td><td>La carte, s'il vous plaît</td></tr>
+      <tr><td>The bill, please</td><td>L'addition, s'il vous plaît</td></tr>
+      <tr><td>Still / sparkling water</td><td>Eau plate / gazeuse</td></tr>
+      <tr><td>It's delicious!</td><td>C'est délicieux&nbsp;!</td></tr>
+    </table>
+    <h4>Getting around</h4>
+    <table>
+      <tr><td>Where is…?</td><td>Où est…&nbsp;?</td></tr>
+      <tr><td>Left / Right / Straight on</td><td>Gauche / Droite / Tout droit</td></tr>
+      <tr><td>How much is it?</td><td>C'est combien&nbsp;?</td></tr>
+    </table>
+    <h4>Tipping &amp; etiquette 🧾</h4>
+    <p class="sub" style="line-height:1.55">Service is included by law (“service compris”), so tipping is optional. For good service, round up or leave <b>5–10%</b> in cash. For coffee or drinks, just leave the small change. Greeting with “Bonjour” before you ask anything genuinely changes how you're treated. Meals are unhurried — the bill won't come until you ask (“L'addition, s'il vous plaît”).</p>
+  </div>`;
+  openSheet("Phrasebook & tipping 🗣", html);
+}
+
+$("sheetBack").addEventListener("click", closeSheet);
+$("sheetBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-bk]");
+  if (b) {
+    const [di, si] = b.dataset.bk.split(":").map(Number);
+    const st = data.days[di].stops[si];
+    st.booked = !st.booked; save();
+    b.classList.toggle("on", st.booked); b.textContent = st.booked ? "✓" : "";
+  }
+});
+$("sheetBody").addEventListener("input", e => {
+  const c = e.target.closest("[data-conf]");
+  if (c) {
+    const [di, si] = c.dataset.conf.split(":").map(Number);
+    const st = data.days[di].stops[si];
+    const v = c.value.trim(); if (v) st.confirm = v; else delete st.confirm; save();
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /*  Export / import / reset                                            */
@@ -851,6 +1118,7 @@ $("stopList").addEventListener("click", e => {
   else if (act === "insert") openModal(null, i);
   else if (act === "heart") { day.stops[i].snapped = !day.stops[i].snapped; save(); render(); }
   else if (act === "tiktok") openTikTok(searchName(day.stops[i].title) + " Paris");
+  else if (act === "mem") openMem(activeDay, i);
 });
 
 $("addStop").addEventListener("click", () => openModal(null, null));
@@ -861,6 +1129,9 @@ $("dayMeta").addEventListener("click", e => {
     $("mapPanel").classList.toggle("hidden", !mapVisible);
     renderDayMeta();
     if (mapVisible) renderMap();
+  } else if (e.target.closest("#shiftBtn")) {
+    shiftTimes(data.days[activeDay].stops, nowStopIdx != null ? nowStopIdx : 0, 30);
+    save(); render();
   }
 });
 
@@ -896,6 +1167,10 @@ $("loveNote").addEventListener("blur", () => { data.loveNote = $("loveNote").tex
 $("menuBtn").addEventListener("click", e => { e.stopPropagation(); $("menu").classList.toggle("hidden"); });
 document.addEventListener("click", () => $("menu").classList.add("hidden"));
 $("menu").addEventListener("click", e => e.stopPropagation());
+$("mMemories").addEventListener("click", () => { $("menu").classList.add("hidden"); openMemories(); });
+$("mBookings").addEventListener("click", () => { $("menu").classList.add("hidden"); openBookings(); });
+$("mPhrases").addEventListener("click", () => { $("menu").classList.add("hidden"); openPhrases(); });
+$("mPlaylist").addEventListener("click", () => { $("menu").classList.add("hidden"); window.open("https://open.spotify.com/search/am%C3%A9lie%20paris%20jazz", "_blank"); });
 $("mExport").addEventListener("click", () => { $("menu").classList.add("hidden"); exportData(); });
 $("mImport").addEventListener("click", () => { $("menu").classList.add("hidden"); $("importFile").click(); });
 $("mPrint").addEventListener("click", () => { $("menu").classList.add("hidden"); window.print(); });
@@ -903,8 +1178,16 @@ $("mReset").addEventListener("click", () => { $("menu").classList.add("hidden");
 $("importFile").addEventListener("change", e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; });
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { closeModal(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); }
+  if (e.key === "Escape") { closeModal(); closeMem(); closeSheet(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); }
 });
+
+// Refresh the "happening now" highlight each minute (but not while a dialog is open).
+setInterval(() => {
+  if (!$("modal").classList.contains("hidden")) return;
+  if (!$("memModal").classList.contains("hidden")) return;
+  if (!$("sheet").classList.contains("hidden")) return;
+  render();
+}, 60000);
 
 render();
 </script>
