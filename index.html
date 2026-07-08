@@ -110,6 +110,26 @@
   }
   .chip b { color: var(--ink); font-weight: 650; }
   .day-actions { display: flex; gap: 8px; width: 100%; margin-top: 2px; }
+
+  /* ---------- Weather ---------- */
+  .weather {
+    width: 100%; display: flex; align-items: center; gap: 12px;
+    background: var(--accent-soft); border: 1px solid #d7e5ff; border-radius: 14px;
+    padding: 10px 13px; margin-top: 2px; color: var(--ink); font-size: 13px;
+  }
+  .weather .wx-emoji { font-size: 26px; line-height: 1; flex: none; }
+  .weather .wx-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .weather .wx-cond { font-weight: 700; }
+  .weather .wx-cond small { font-weight: 600; color: var(--muted); font-size: 11.5px; margin-left: 7px; }
+  .weather .wx-temps { color: var(--muted); font-size: 12.5px; }
+  .weather .wx-temps b { color: var(--ink); font-weight: 700; }
+  .weather .wx-rain {
+    margin-left: auto; flex: none; background: var(--card); border: 1px solid #d7e5ff;
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; color: var(--accent);
+    font-weight: 700; white-space: nowrap;
+  }
+  .weather.wx-muted { background: var(--soft); border-color: var(--line); color: var(--muted); }
+  .weather.wx-muted .wx-emoji { font-size: 20px; }
   .btn {
     border: 1px solid var(--line); background: var(--card); color: var(--ink);
     font: inherit; font-size: 13px; font-weight: 600; padding: 9px 12px; border-radius: 11px;
@@ -668,6 +688,7 @@ function renderDayMeta() {
     `<div class="day-title">${esc(day.title)}</div>` +
     `<span class="chip"><b>${stops.length}</b> stops</span>` +
     `<span class="chip">🚶 <b>${walkKm.toFixed(1)} km</b> · ${walkMin} min</span>` +
+    `<div class="weather wx-muted" id="weatherBox"><span class="wx-emoji">⛅</span><div class="wx-main"><span class="wx-cond">Loading Paris forecast…</span></div></div>` +
     `<div class="day-actions">` +
       `<button class="btn wide" id="toggleMap">${mapVisible ? "🗺️ Hide map" : "🗺️ Show map"}</button>` +
       (routeUrl ? `<a class="btn wide" href="${routeUrl}" target="_blank" rel="noopener">↗ Whole day in Google Maps</a>` : "") +
@@ -675,6 +696,103 @@ function renderDayMeta() {
     (nowStopIdx != null
       ? `<div class="now-bar">● Around <b>&nbsp;stop ${nowStopIdx + 1}&nbsp;</b> right now<button class="btn" id="shiftBtn">🕐 Running late? +30 min</button></div>`
       : "");
+  fetchWeather();
+  paintWeather();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Weather (Google-style forecast via Open-Meteo, no API key)         */
+/* ------------------------------------------------------------------ */
+const PARIS_COORD = { lat: 48.8566, lng: 2.3522 };
+const WX_MONTHS = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+let weatherCache = null;    // { "2026-07-15": {code,max,min,rain}, ... }
+let weatherState = "idle";  // idle | loading | done | error
+
+// Turn a day's "15 Jul" label into an ISO date for the trip year.
+function isoDateForDay(day) {
+  const m = String(day && day.date || "").trim().match(/(\d{1,2})\s*([A-Za-z]{3})/);
+  if (!m) return null;
+  const mo = WX_MONTHS[m[2].toLowerCase()];
+  if (mo == null) return null;
+  return `2026-${String(mo + 1).padStart(2, "0")}-${String(+m[1]).padStart(2, "0")}`;
+}
+
+// WMO weather code -> [emoji, label]
+function wxInfo(code) {
+  const map = {
+    0:["☀️","Clear sky"], 1:["🌤️","Mainly clear"], 2:["⛅","Partly cloudy"], 3:["☁️","Overcast"],
+    45:["🌫️","Fog"], 48:["🌫️","Rime fog"],
+    51:["🌦️","Light drizzle"], 53:["🌦️","Drizzle"], 55:["🌦️","Heavy drizzle"],
+    56:["🌧️","Freezing drizzle"], 57:["🌧️","Freezing drizzle"],
+    61:["🌧️","Light rain"], 63:["🌧️","Rain"], 65:["🌧️","Heavy rain"],
+    66:["🌧️","Freezing rain"], 67:["🌧️","Freezing rain"],
+    71:["🌨️","Light snow"], 73:["🌨️","Snow"], 75:["🌨️","Heavy snow"], 77:["🌨️","Snow grains"],
+    80:["🌦️","Rain showers"], 81:["🌦️","Rain showers"], 82:["⛈️","Heavy showers"],
+    85:["🌨️","Snow showers"], 86:["🌨️","Snow showers"],
+    95:["⛈️","Thunderstorm"], 96:["⛈️","Thunderstorm, hail"], 99:["⛈️","Thunderstorm, hail"]
+  };
+  return map[code] || ["🌡️", "—"];
+}
+
+// Fetch the forecast once for the whole trip range, then repaint.
+function fetchWeather() {
+  if (weatherState === "loading" || weatherState === "done") return;
+  const dates = data.days.map(isoDateForDay).filter(Boolean).sort();
+  if (!dates.length) { weatherState = "error"; return; }
+  weatherState = "loading";
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${PARIS_COORD.lat}&longitude=${PARIS_COORD.lng}`
+    + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`
+    + `&timezone=Europe%2FParis&start_date=${dates[0]}&end_date=${dates[dates.length - 1]}`;
+  fetch(url)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(j => {
+      const d = j && j.daily;
+      if (!d || !Array.isArray(d.time)) throw new Error("bad data");
+      const c = {};
+      d.time.forEach((t, i) => {
+        c[t] = {
+          code: d.weather_code[i],
+          max: d.temperature_2m_max[i],
+          min: d.temperature_2m_min[i],
+          rain: d.precipitation_probability_max ? d.precipitation_probability_max[i] : null
+        };
+      });
+      weatherCache = c;
+      weatherState = "done";
+      paintWeather();
+    })
+    .catch(() => { weatherState = "error"; paintWeather(); });
+}
+
+function paintWeather() {
+  const box = $("weatherBox");
+  if (!box) return;
+  const day = data.days[activeDay];
+  const iso = isoDateForDay(day);
+
+  if (weatherState === "idle" || weatherState === "loading") {
+    box.className = "weather wx-muted";
+    box.innerHTML = `<span class="wx-emoji">⛅</span><div class="wx-main"><span class="wx-cond">Loading Paris forecast…</span></div>`;
+    return;
+  }
+  const w = (weatherCache && iso) ? weatherCache[iso] : null;
+  if (!w) {
+    box.className = "weather wx-muted";
+    const reason = weatherState === "error"
+      ? "Couldn’t load the forecast — check your connection."
+      : "Forecast appears within about 16 days of the date.";
+    box.innerHTML = `<span class="wx-emoji">🌡️</span><div class="wx-main"><span class="wx-cond">Forecast unavailable</span><span class="wx-temps">${reason}</span></div>`;
+    return;
+  }
+  const [emoji, cond] = wxInfo(w.code);
+  box.className = "weather";
+  box.innerHTML =
+    `<span class="wx-emoji">${emoji}</span>` +
+    `<div class="wx-main">` +
+      `<span class="wx-cond">${cond}<small>Paris · ${esc(day.date)}</small></span>` +
+      `<span class="wx-temps">High <b>${Math.round(w.max)}°C</b> · Low <b>${Math.round(w.min)}°C</b></span>` +
+    `</div>` +
+    (w.rain != null ? `<span class="wx-rain">☔ ${w.rain}%</span>` : "");
 }
 
 function stopCard(stop, index, day) {
