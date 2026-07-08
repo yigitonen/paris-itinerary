@@ -277,6 +277,14 @@
   .phr table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .phr td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .phr td:first-child { font-weight: 650; width: 46%; }
+  .eat { padding: 13px 0; border-bottom: 1px solid var(--line); }
+  .eat-top { display: flex; align-items: baseline; gap: 8px; }
+  .eat-name { font-weight: 700; font-size: 15px; }
+  .eat-top .price { color: var(--muted); font-size: 12px; font-weight: 650; margin-left: auto; white-space: nowrap; }
+  .eat-meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .eat-why { font-size: 13.5px; margin-top: 5px; line-height: 1.42; }
+  .dist { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
+  .dist.far { color: #a15c00; }
 
   @media (min-width: 720px) {
     #map { height: 420px; }
@@ -311,6 +319,7 @@
       <div class="menu hidden" id="menu">
         <button id="mMemories">💞 &nbsp;Memories &amp; stamps</button>
         <button id="mBookings">🎟 &nbsp;Bookings</button>
+        <button id="mEats">🍽️ &nbsp;Eat &amp; drink guide</button>
         <button id="mPhrases">🗣 &nbsp;Phrasebook &amp; tipping</button>
         <button id="mPlaylist">🎶 &nbsp;Paris playlist</button>
         <button id="mSync">☁️ &nbsp;Cloud sync</button>
@@ -563,10 +572,17 @@ function fmtMin(mins) {
   mins = ((mins % 1440) + 1440) % 1440;
   return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
 }
-/* Index of the stop you should be at right now (last one whose time has passed). */
-function nowStopFor(stops) {
-  const d = new Date();
-  const cur = d.getHours() * 60 + d.getMinutes();
+/* Index of the stop you should be at right now — but ONLY on the actual trip day
+   for that tab (Day 1 = 15 Jul 2026, Day 2 = 16 Jul). Otherwise no "now" marker. */
+const TRIP_START = new Date(2026, 6, 15); // 15 July 2026 (month is 0-indexed)
+function nowStopFor(stops, dayIndex) {
+  const now = new Date();
+  const dayDate = new Date(TRIP_START);
+  dayDate.setDate(TRIP_START.getDate() + (dayIndex || 0));
+  if (now.getFullYear() !== dayDate.getFullYear() || now.getMonth() !== dayDate.getMonth() || now.getDate() !== dayDate.getDate()) {
+    return null; // not that day → don't highlight anything
+  }
+  const cur = now.getHours() * 60 + now.getMinutes();
   let idx = null;
   for (let i = 0; i < stops.length; i++) {
     const t = parseMin(stops[i].time);
@@ -661,7 +677,7 @@ function renderDayMeta() {
     if (l.ok && !l.long) { walkKm += l.km; walkMin += l.min; }
   }
   const routeUrl = gDayRoute(stops);
-  nowStopIdx = nowStopFor(stops);
+  nowStopIdx = nowStopFor(stops, activeDay);
   $("dayMeta").innerHTML =
     `<div class="day-title">${esc(day.title)}</div>` +
     `<span class="chip"><b>${stops.length}</b> stops</span>` +
@@ -1070,8 +1086,56 @@ function openPhrases() {
   openSheet("Phrasebook & tipping 🗣", html);
 }
 
+/* Curated food & drink picks (from The Infatuation, Eater Paris, Time Out,
+   Roadbook & Eiffel-view guides). Coords give an approximate walk from the hotel. */
+const EATS = [
+  { cat: "Lunch", name: "L'Avant Comptoir de l'Odéon", price: "€€", tag: "Standing tapas & wine", area: "Odéon", why: "Yves Camdeborde's buzzy no-reservations counter — point at the ceiling menu and graze. (The Infatuation)", lat: 48.8519, lng: 2.3388 },
+  { cat: "Lunch", name: "Le Comptoir du Relais", price: "€€€", tag: "Bistro", area: "Odéon", why: "The beloved Camdeborde bistro; lunch is far easier to get than dinner. (Eater)", lat: 48.8517, lng: 2.3390 },
+  { cat: "Lunch", name: "Bouillon Racine", price: "€", tag: "Classic French", area: "Odéon", why: "Jaw-dropping Art Nouveau room, honest French classics at gentle prices.", lat: 48.8503, lng: 2.3417 },
+  { cat: "Lunch", name: "Les Papilles", price: "€€", tag: "Market bistro + wine", area: "Latin Quarter", why: "Set market menu by the Luxembourg gardens; pick any wine off the shelf. (Time Out)", lat: 48.8447, lng: 2.3419 },
+  { cat: "Lunch", name: "Le Fumoir", price: "€€", tag: "Stylish brasserie", area: "By the Louvre", why: "Steps from the Louvre — the ideal Day-1 lunch pivot before the museum.", lat: 48.8601, lng: 2.3409 },
+
+  { cat: "Dinner", name: "Café de l'Homme", price: "€€€€", tag: "Eiffel-view terrace", area: "Trocadéro", why: "Front-row Eiffel terrace — the romantic showstopper, right at your Trocadéro stop. Book well ahead.", lat: 48.8626, lng: 2.2876 },
+  { cat: "Dinner", name: "Girafe", price: "€€€€", tag: "Seafood, Eiffel view", area: "Trocadéro", why: "Chic seafood with the best Eiffel panorama in the city. Reserve early.", lat: 48.8624, lng: 2.2893 },
+  { cat: "Dinner", name: "Les Ombres", price: "€€€€", tag: "Rooftop, Eiffel view", area: "Quai Branly", why: "Glass rooftop 'in the shadow' of the tower atop the Quai Branly museum.", lat: 48.8608, lng: 2.2976 },
+  { cat: "Dinner", name: "Monsieur Bleu", price: "€€€", tag: "Art Deco, Eiffel view", area: "Palais de Tokyo", why: "Glamorous Art Deco room; summer terrace with cocktails and a DJ.", lat: 48.8639, lng: 2.2965 },
+  { cat: "Dinner", name: "Le Procope", price: "€€€", tag: "Historic café", area: "Odéon", why: "Paris's oldest café (1686) — full of history, a short walk from the hotel.", lat: 48.8533, lng: 2.3388 },
+
+  { cat: "Drinks", name: "Dragon", price: "€€€", tag: "Cocktails", area: "Rue du Dragon", why: "Sultry, dimly-lit date-night bar minutes from the hotel. (Roadbook)", lat: 48.8524, lng: 2.3300 },
+  { cat: "Drinks", name: "Experimental Cocktail Club", price: "€€€", tag: "Cocktails", area: "Rue Mazarine", why: "Vintage-glam Left Bank staple — velvet, low light, serious drinks.", lat: 48.8544, lng: 2.3378 },
+  { cat: "Drinks", name: "La Compagnie des Vins Surnaturels", price: "€€€", tag: "Wine bar", area: "Marché Saint-Germain", why: "600-reference cellar of natural + rare wines by the glass. (Eater)", lat: 48.8527, lng: 2.3345 },
+  { cat: "Drinks", name: "Au Sauvignon", price: "€€", tag: "Wine bar", area: "Rue des Saints-Pères", why: "Classic tiled wine bar with a lovely corner terrace, 3 min from the hotel.", lat: 48.8531, lng: 2.3277 }
+];
+function eatRow(p) {
+  const l = legInfo(HOTEL, { lat: p.lat, lng: p.lng });
+  const dist = l.ok ? (l.long ? `<span class="dist far">🚕 ${l.km.toFixed(1)} km</span>` : `<span class="dist">🚶 ${l.min} min</span>`) : "";
+  const place = { title: p.name, lat: p.lat, lng: p.lng };
+  return `<div class="eat">
+    <div class="eat-top"><span class="eat-name">${esc(p.name)}</span><span class="price">${esc(p.price)}</span></div>
+    <div class="eat-meta">${esc(p.tag)} · ${esc(p.area)} ${dist}</div>
+    <div class="eat-why">${esc(p.why)}</div>
+    <div class="card-links">
+      <span class="lbl">See it:</span>
+      <a class="mini" href="${gPlace(place)}" target="_blank" rel="noopener">🔎 <b>Google</b></a>
+      <a class="mini" href="${aPlace(place)}" target="_blank" rel="noopener"><b>Apple</b></a>
+      <button class="mini tt" type="button" data-tt="${esc(searchName(p.name) + " Paris")}">▶ <b>TikTok</b></button>
+    </div>
+  </div>`;
+}
+function openEats() {
+  const groups = [["🥐 Lunch & bistros", "Lunch"], ["🍷 Romantic dinner — Eiffel views & classics", "Dinner"], ["🍸 Drinks — cocktails & wine", "Drinks"]];
+  let html = `<p class="sub">Hand-picked from Paris food guides (The Infatuation, Eater Paris, Time Out, Roadbook). Walking time is from your hotel — approximate.</p>`;
+  groups.forEach(([title, cat]) => {
+    html += `<h4>${title}</h4>`;
+    EATS.filter(p => p.cat === cat).forEach(p => { html += eatRow(p); });
+  });
+  openSheet("Eat & drink guide 🍽️", html);
+}
+
 $("sheetBack").addEventListener("click", closeSheet);
 $("sheetBody").addEventListener("click", e => {
+  const tt = e.target.closest("[data-tt]");
+  if (tt) { openTikTok(tt.dataset.tt); return; }
   const b = e.target.closest("[data-bk]");
   if (b) {
     const [di, si] = b.dataset.bk.split(":").map(Number);
@@ -1189,6 +1253,7 @@ $("menuBtn").addEventListener("click", e => { e.stopPropagation(); $("menu").cla
 document.addEventListener("click", () => $("menu").classList.add("hidden"));
 $("menu").addEventListener("click", e => e.stopPropagation());
 $("mMemories").addEventListener("click", () => { $("menu").classList.add("hidden"); openMemories(); });
+$("mEats").addEventListener("click", () => { $("menu").classList.add("hidden"); openEats(); });
 $("mBookings").addEventListener("click", () => { $("menu").classList.add("hidden"); openBookings(); });
 $("mPhrases").addEventListener("click", () => { $("menu").classList.add("hidden"); openPhrases(); });
 $("mPlaylist").addEventListener("click", () => { $("menu").classList.add("hidden"); window.open("https://open.spotify.com/search/am%C3%A9lie%20paris%20jazz", "_blank"); });
