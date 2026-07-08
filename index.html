@@ -11,6 +11,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗼</text></svg>"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #f6f4ee;
@@ -236,6 +237,7 @@
   .dare-card .k { font-size: 12px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--rose); }
   .dare-card .txt { font-size: 20px; line-height: 1.35; margin: 12px 0 20px; font-weight: 650; }
   .dare-card .row { display: flex; gap: 10px; }
+  .sub { color: var(--muted); font-size: 13px; line-height: 1.45; }
 
   /* ---------- Now / running late ---------- */
   .stop.now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow); }
@@ -311,6 +313,7 @@
         <button id="mBookings">🎟 &nbsp;Bookings</button>
         <button id="mPhrases">🗣 &nbsp;Phrasebook &amp; tipping</button>
         <button id="mPlaylist">🎶 &nbsp;Paris playlist</button>
+        <button id="mSync">☁️ &nbsp;Cloud sync</button>
         <hr/>
         <button id="mExport">⤓ &nbsp;Backup / export</button>
         <button id="mImport">⤒ &nbsp;Import backup</button>
@@ -405,6 +408,23 @@
   </div>
 </div>
 
+<!-- Cloud sync sign-in -->
+<div class="modal hidden" id="syncModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3>☁️ Cloud sync</h3><button class="icon-btn" id="syncClose" aria-label="Close">✕</button></div>
+    <p id="syncStatus" class="sub" style="margin:0 0 14px"></p>
+    <div id="syncSignedOut">
+      <div class="field"><label>Your email</label><input id="syncEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"/></div>
+      <button class="btn primary" id="syncSend" style="width:100%">Send me a magic link</button>
+      <p class="sub" style="margin-top:10px">You'll get an email with a sign-in link — tap it on this device to finish. No password needed.</p>
+    </div>
+    <div id="syncSignedIn" class="hidden">
+      <button class="btn" id="syncNow" style="width:100%;margin-bottom:8px">↻ Sync now</button>
+      <button class="btn ghost danger" id="syncOut" style="width:100%">Sign out</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="importFile" accept="application/json,.json" class="hidden"/>
 
 <script>
@@ -486,8 +506,11 @@ function load() {
   return defaultData();
 }
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); return true; }
-  catch (e) { console.warn("Could not save:", e); return false; }
+  let ok = true;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+  catch (e) { console.warn("Could not save:", e); ok = false; }
+  schedulePush(); // sync to the cloud too, if signed in (defined in the cloud section)
+  return ok;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1177,8 +1200,106 @@ $("mPrint").addEventListener("click", () => { $("menu").classList.add("hidden");
 $("mReset").addEventListener("click", () => { $("menu").classList.add("hidden"); resetData(); });
 $("importFile").addEventListener("change", e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; });
 
+/* ------------------------------------------------------------------ */
+/*  Cloud sync (Supabase) — optional, local-first                      */
+/*  Fill these two in to enable; leave as-is and the app stays local.  */
+/* ------------------------------------------------------------------ */
+const SUPABASE_URL = "https://fskujzurzqjncvfrqxlr.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZza3VqenVyenFqbmN2ZnJxeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTk0NjYsImV4cCI6MjA5OTA5NTQ2Nn0.TNFYgZcygfmd4FvNlrzNwFmoUqNVuX8M3zLfUidPcAA";
+const TRIP_ID = "paris";
+let sb = null, sbUser = null, pushTimer = null, applyingCloud = false;
+
+function cloudConfigured() {
+  return typeof supabase !== "undefined" && /supabase\.co/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 20;
+}
+function initCloud() {
+  if (!cloudConfigured()) { updateSyncUI(); return; }
+  try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+  catch (e) { console.warn("Supabase init failed", e); return; }
+  sb.auth.onAuthStateChange((_evt, session) => {
+    sbUser = session ? session.user : null;
+    updateSyncUI();
+    if (sbUser) cloudPull();
+  });
+  sb.auth.getSession().then(({ data: d }) => {
+    sbUser = d.session ? d.session.user : null;
+    updateSyncUI();
+    if (sbUser) cloudPull();
+  });
+}
+async function cloudPull() {
+  if (!sb || !sbUser) return;
+  try {
+    const { data: row, error } = await sb.from("trips").select("data,updated_at").eq("id", TRIP_ID).single();
+    if (error) { console.warn("cloud pull:", error.message); return; }
+    const hasData = row && row.data && Array.isArray(row.data.days) && row.data.days.length;
+    const localStamp = localStorage.getItem("cloudSyncedAt") || "";
+    if (hasData && row.updated_at !== localStamp) {
+      applyingCloud = true;                 // adopt the cloud copy without echoing a push
+      data = row.data;
+      if (activeDay >= data.days.length) activeDay = 0;
+      save();
+      localStorage.setItem("cloudSyncedAt", row.updated_at);
+      applyingCloud = false;
+      render();
+    } else if (!hasData) {
+      cloudPush();                          // cloud empty → seed it from this device
+    }
+  } catch (e) { console.warn(e); }
+}
+async function cloudPush() {
+  if (!sb || !sbUser) return;
+  try {
+    const stamp = new Date().toISOString();
+    const { error } = await sb.from("trips").update({ data: data, updated_at: stamp }).eq("id", TRIP_ID);
+    if (error) { console.warn("cloud push:", error.message); return; }
+    localStorage.setItem("cloudSyncedAt", stamp);
+  } catch (e) { console.warn(e); }
+}
+function schedulePush() {
+  if (!sb || !sbUser || applyingCloud) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(cloudPush, 1500);
+}
+function updateSyncUI() {
+  const st = $("syncStatus"); if (!st) return;
+  if (!cloudConfigured()) {
+    st.textContent = "Cloud sync isn't set up on this build yet.";
+    $("syncSignedIn").classList.add("hidden"); $("syncSignedOut").classList.add("hidden");
+    return;
+  }
+  if (sbUser) {
+    st.textContent = "Signed in as " + sbUser.email + " — your plan & photos sync across your devices.";
+    $("syncSignedIn").classList.remove("hidden"); $("syncSignedOut").classList.add("hidden");
+  } else {
+    st.textContent = "Sign in with your email to sync your plan and photos across devices.";
+    $("syncSignedIn").classList.add("hidden"); $("syncSignedOut").classList.remove("hidden");
+  }
+}
+$("mSync").addEventListener("click", () => { $("menu").classList.add("hidden"); updateSyncUI(); $("syncModal").classList.remove("hidden"); });
+$("syncClose").addEventListener("click", () => $("syncModal").classList.add("hidden"));
+$("syncModal").addEventListener("click", e => { if (e.target.id === "syncModal") $("syncModal").classList.add("hidden"); });
+$("syncSend").addEventListener("click", async () => {
+  const email = $("syncEmail").value.trim();
+  if (!email) { $("syncEmail").focus(); return; }
+  if (!sb) { alert("Cloud sync isn't set up on this build yet."); return; }
+  const btn = $("syncSend"); btn.disabled = true; btn.textContent = "Sending…";
+  try {
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href.split("#")[0] } });
+    if (error) alert("Couldn't send the link: " + error.message);
+    else alert("Check your email for the sign-in link — open it on this device.");
+  } catch (e) { alert("Something went wrong: " + e); }
+  btn.disabled = false; btn.textContent = "Send me a magic link";
+});
+$("syncNow").addEventListener("click", cloudPull);
+$("syncOut").addEventListener("click", async () => {
+  if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+  sbUser = null; localStorage.removeItem("cloudSyncedAt"); updateSyncUI();
+});
+window.addEventListener("focus", () => { if (sbUser) cloudPull(); });
+
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { closeModal(); closeMem(); closeSheet(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); }
+  if (e.key === "Escape") { closeModal(); closeMem(); closeSheet(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); $("syncModal").classList.add("hidden"); }
 });
 
 // Refresh the "happening now" highlight each minute (but not while a dialog is open).
@@ -1190,6 +1311,7 @@ setInterval(() => {
 }, 60000);
 
 render();
+initCloud();
 </script>
 </body>
 </html>
