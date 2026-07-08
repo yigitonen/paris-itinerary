@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#f6f4ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-<meta name="apple-mobile-web-app-title" content="Paris"/>
-<title>Paris · 2-Day Itinerary</title>
+<meta name="apple-mobile-web-app-title" content="Elif &amp; Yiğit"/>
+<title>Elif &amp; Yiğit · Paris</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗼</text></svg>"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -290,9 +290,9 @@
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="em">🗼</span> Paris · 2-Day Itinerary</h1>
+    <h1><span class="em">🗼</span> Elif &amp; Yiğit in Paris</h1>
     <div class="subtitle">
-      15–17 July 2026 · based at Hôtel Aramis Saint-Germain. Tap any leg for walking directions in
+      Our Paris weekend · 15–17 July 2026 · Hôtel Aramis Saint-Germain. Tap any leg for walking directions in
       Google or Apple Maps. Tap <b>Edit ✏️</b> to add, remove or reorder stops — changes are saved on this device.
     </div>
     <div class="tripbar">
@@ -423,7 +423,7 @@ function uid() { _idc += 1; return "s" + Date.now().toString(36) + (_idc) + Math
 function defaultData() {
   return {
     version: 1,
-    loveNote: "Paris, just the two of us 💕",
+    loveNote: "Elif & Yiğit — just the two of us 💕",
     days: [
       {
         id: "d1", label: "Day 1", date: "15 Jul", title: "Classic Paris day",
@@ -738,7 +738,7 @@ function render() {
   $("editBtn").classList.toggle("on", editing);
   $("countdown").textContent = daysUntil();
   if (document.activeElement !== $("loveNote")) {
-    $("loveNote").textContent = (data.loveNote != null && data.loveNote !== "") ? data.loveNote : "Paris, just the two of us 💕";
+    $("loveNote").textContent = (data.loveNote != null && data.loveNote !== "") ? data.loveNote : "Elif & Yiğit — just the two of us 💕";
   }
   if (mapVisible) renderMap();
 }
