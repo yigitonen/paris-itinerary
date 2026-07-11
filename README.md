@@ -10,6 +10,12 @@ A mobile-friendly, editable Paris itinerary (15–17 July 2026). Single self-con
 - **Edit on your phone** — add, remove, reorder and edit stops. Changes are saved
   in your browser (this device), with **Backup / Import** to move them between devices.
 - Walking distances/times are estimated live from coordinates, so they update as you edit.
+- **Route optimizer** (⋯ menu) — paste the places from a Google Maps list (one per
+  line) and get a day-by-day plan: places are located automatically (OpenStreetMap),
+  clustered into days, and ordered to minimise walking. House rules: every day
+  starts & ends at the hotel and must include a breakfast, a lunch and a dinner
+  (lunch no earlier than 12:30, dinner no earlier than 19:30). Tag meals inline
+  with `#breakfast` / `#lunch` / `#dinner`, or tap a place's category chip to change it.
 
 ## Editing tips
 - Tap **✏️ Edit** to show the add / reorder / delete controls.
