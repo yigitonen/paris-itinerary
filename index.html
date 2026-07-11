@@ -296,6 +296,9 @@
   .opt-cat.meal { background: #fff0e6; border-color: #ffd0ad; color: #b45309; }
   .opt-x { border: 0; background: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 6px; }
   .opt-fix { width: 100%; margin: 6px 0 4px; font: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid #eecac4; border-radius: 9px; }
+  .opt-sug { border: 1px solid #cfe0ff; background: var(--accent-soft); color: #1b48b3; font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 7px 11px; cursor: pointer; margin: 0 6px 6px 0; }
+  .opt-sug:disabled { opacity: .4; cursor: default; }
+  .opt-sug-h { margin: 10px 0 6px; font-size: 13px; font-weight: 700; }
   .opt-warn { background: #fff7da; border: 1px solid #f0db8c; color: #6b551a; border-radius: 10px; padding: 9px 11px; font-size: 13px; margin: 12px 0; line-height: 1.45; }
   .opt-ok { background: #e7f6ec; border: 1px solid #b7e4c7; color: #1a7f3c; border-radius: 10px; padding: 9px 11px; font-size: 13px; margin: 12px 0; line-height: 1.45; }
   .opt-day { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px; margin: 12px 0; }
@@ -429,21 +432,22 @@
   </div>
   <div class="sheet-body">
     <p class="sub">
-      Paste the places from your Google Maps list — <b>one per line</b>. (Google doesn't let web apps open a
-      shared-list link directly, so open your saved list in Maps and copy the place names out.) A line can also
-      include a full Maps link or "lat, lng", and you can tag meals inline with
+      Works for any city. Paste the places from your Google Maps list — <b>one per line</b>. (Google doesn't let
+      web apps open a shared-list link directly, so open your saved list in Maps and copy the place names out.)
+      A line can also include a full Maps link or "lat, lng", and you can tag meals inline with
       <b>#breakfast</b> <b>#lunch</b> <b>#dinner</b> — otherwise categories are guessed and you can tap to change them.
     </p>
     <div class="field"><label>Places — one per line</label>
       <textarea id="optInput" style="min-height:150px" placeholder="Louvre Museum&#10;Sainte-Chapelle&#10;Wani #breakfast&#10;Bouillon Racine #lunch&#10;Brasserie des Prés #dinner&#10;Angelina https://maps.google.com/…"></textarea>
     </div>
+    <div class="field"><label>City / destination — helps find the right places</label><input id="optCity" value="Paris" autocomplete="off"/></div>
     <div class="opt-grid">
       <div class="field"><label>Days</label><input id="optDays" type="number" min="1" max="7" value="2" inputmode="numeric"/></div>
       <div class="field"><label>Each day starts at</label><input id="optStart" value="09:00" inputmode="numeric"/></div>
     </div>
     <div class="loc-box">
       <div class="field" style="margin:0"><label>Hotel — every day starts &amp; ends here</label><input id="optHotelName" value="Hôtel Aramis Saint-Germain"/></div>
-      <div class="field" style="margin:10px 0 0"><label>Hotel location (Maps link or "lat, lng")</label><input id="optHotelLoc" placeholder="48.8487, 2.3263"/></div>
+      <div class="field" style="margin:10px 0 0"><label>Hotel location — optional; the name is searched too</label><input id="optHotelLoc" placeholder="Maps link or 48.8487, 2.3263"/></div>
     </div>
     <button class="btn primary" id="optParse" style="width:100%">📍 Find these places</button>
     <div id="optReview"></div>
@@ -1215,7 +1219,7 @@ const OPT_MEALS = ["Breakfast", "Lunch", "Dinner"];
 const OPT_DUR = { Breakfast: 40, Lunch: 75, Dinner: 90, Museum: 120, Sight: 45, "Walk / Rest": 40, Bar: 60 };
 const OPT_MEAL_EARLIEST = { Lunch: 12 * 60 + 30, Dinner: 19 * 60 + 30 };
 const OPT_TAGS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", sight: "Sight", museum: "Museum", bar: "Bar", walk: "Walk / Rest" };
-let opt = { places: [], plan: null, busy: false };
+let opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false };
 
 function optGuessCat(name) {
   if (/breakfast|brunch|coffee|café|\bcafe\b|boulangerie|bakery|p[âa]tisserie/i.test(name)) return "Breakfast";
@@ -1249,34 +1253,108 @@ function optParseLine(raw) {
   return { name, category: cat || optGuessCat(name), lat, lng, status: lat != null ? "ok" : "todo" };
 }
 
-/* Free geocoding via OpenStreetMap Nominatim, biased to central Paris. */
+/* Resolve the destination city once (centre + bounding box) so place
+   searches are biased to it. Empty city → plain worldwide search. */
+async function optResolveCity() {
+  const name = $("optCity").value.trim();
+  if (!name) { opt.city = null; return false; }
+  const key = name.toLowerCase();
+  if (key in opt.cityCache) { opt.city = opt.cityCache[key]; return false; }
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en&q=" + encodeURIComponent(name));
+    const j = r.ok ? await r.json() : [];
+    opt.city = (j && j.length) ? { name, lat: +j[0].lat, lng: +j[0].lon, box: j[0].boundingbox } : null;
+  } catch (e) { opt.city = null; }
+  opt.cityCache[key] = opt.city;
+  return true; // a request was made → caller rate-limits before the next one
+}
+
+/* Free geocoding via OpenStreetMap Nominatim, biased to the chosen city. */
 async function optGeocode(name) {
-  const q = /paris/i.test(name) ? name : name + ", Paris, France";
+  let q = name, extra = "";
+  if (opt.city) {
+    if (!name.toLowerCase().includes(opt.city.name.toLowerCase())) q = name + ", " + opt.city.name;
+    const b = opt.city.box; // [south, north, west, east]
+    if (b && b.length === 4) extra = "&viewbox=" + [b[2], b[1], b[3], b[0]].join(",");
+  }
   const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
-    + "&viewbox=2.20,48.92,2.48,48.80&q=" + encodeURIComponent(q);
+    + extra + "&q=" + encodeURIComponent(q);
   const r = await fetch(url);
   if (!r.ok) return null;
   const j = await r.json();
   return (j && j.length) ? { lat: +j[0].lat, lng: +j[0].lon } : null;
 }
 
+/* Best guess for "where is home base": pasted hotel coords → geocoded hotel
+   → middle of the located places → city centre → the app's default hotel. */
+function optHotelCoords() {
+  const pasted = parseCoords($("optHotelLoc").value.trim());
+  if (pasted) return pasted;
+  if (opt.hotel) return opt.hotel;
+  const ok = opt.places.filter(p => p.status === "ok");
+  if (ok.length) return {
+    lat: ok.reduce((sum, p) => sum + p.lat, 0) / ok.length,
+    lng: ok.reduce((sum, p) => sum + p.lng, 0) / ok.length
+  };
+  return opt.city ? { lat: opt.city.lat, lng: opt.city.lng } : HOTEL;
+}
+
 async function optLocateAll() {
   if (opt.busy) return;
   const lines = $("optInput").value.split(/\r?\n/).map(optParseLine).filter(Boolean);
   if (!lines.length) { alert("Paste at least one place first — one per line."); return; }
-  opt.places = lines; opt.plan = null; renderOptPlan();
+  opt.places = lines; opt.plan = null; opt.sugg = null; opt.hotel = null; renderOptPlan();
   opt.busy = true; renderOptReview();
+  const wait = () => new Promise(res => setTimeout(res, 1100)); // Nominatim asks for ≤ 1 request/sec
+  let fetched = await optResolveCity();
+  const hotelName = $("optHotelName").value.trim();
+  if (!parseCoords($("optHotelLoc").value.trim()) && hotelName) {
+    if (fetched) await wait();
+    try { opt.hotel = await optGeocode(hotelName); } catch (e) { opt.hotel = null; }
+    fetched = true;
+  }
   for (const p of opt.places) {
     if (p.status === "ok") continue;
+    if (fetched) await wait();
+    fetched = true;
     p.status = "loading"; renderOptReview();
     try {
       const c = await optGeocode(p.name);
       if (c) { p.lat = c.lat; p.lng = c.lng; p.status = "ok"; } else p.status = "miss";
     } catch (e) { p.status = "miss"; }
     renderOptReview();
-    await new Promise(res => setTimeout(res, 1100)); // Nominatim asks for ≤ 1 request/sec
   }
   opt.busy = false; renderOptReview();
+}
+
+/* Suggest nearby meal spots via the Overpass API (OpenStreetMap data) when
+   the breakfast/lunch/dinner rule isn't satisfied yet. Centred on the hotel. */
+async function optSuggest() {
+  if (opt.suggBusy) return;
+  opt.suggBusy = true; renderOptReview();
+  const c = optHotelCoords();
+  const around = r => `(around:${r},${c.lat.toFixed(5)},${c.lng.toFixed(5)})`;
+  const q = `[out:json][timeout:20];(nwr["amenity"="cafe"]["name"]${around(1500)};nwr["shop"="bakery"]["name"]${around(1500)};nwr["amenity"="restaurant"]["name"]${around(1500)};);out center 120;`;
+  try {
+    const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q));
+    if (!r.ok) throw new Error("overpass " + r.status);
+    const j = await r.json();
+    const seen = new Set();
+    const items = (j.elements || []).map(el => {
+      const lat = el.lat != null ? el.lat : el.center && el.center.lat;
+      const lng = el.lon != null ? el.lon : el.center && el.center.lon;
+      const name = el.tags && el.tags.name;
+      if (lat == null || lng == null || !name) return null;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return null;
+      seen.add(key);
+      const breakfast = (el.tags.amenity === "cafe" || el.tags.shop === "bakery");
+      return { name, lat, lng, breakfast, d: optDist({ lat, lng }, c) };
+    }).filter(Boolean).sort((a, b) => a.d - b.d);
+    const rest = items.filter(x => !x.breakfast).slice(0, 8);
+    opt.sugg = { Breakfast: items.filter(x => x.breakfast).slice(0, 8), Lunch: rest, Dinner: rest };
+  } catch (e) { opt.sugg = "error"; }
+  opt.suggBusy = false; renderOptReview();
 }
 
 function optRules() {
@@ -1309,13 +1387,39 @@ function renderOptReview() {
   if (opt.busy) {
     html += `<div class="opt-warn">⏳ Locating your places (free OpenStreetMap search, about one per second)…</div>`;
   } else if (missing.length) {
-    html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, or tap a category chip to retag a place.</div>`;
+    html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, tap a category chip to retag a place, or let me suggest some spots near your hotel.</div>`;
+    html += renderOptSugg(days);
   } else {
     html += `<div class="opt-ok">✅ Rules satisfied — every day gets breakfast, lunch &amp; dinner and starts/ends at your hotel.</div>`;
+  }
+  if (!opt.busy && !parseCoords($("optHotelLoc").value.trim()) && $("optHotelName").value.trim() && !opt.hotel) {
+    html += `<div class="opt-warn">🏨 Couldn't locate the hotel by name — paste a Maps link or "lat, lng" in the hotel field, or I'll use the middle of your places as home base.</div>`;
   }
   const ready = !opt.busy && !missing.length && located > 0;
   html += `<button class="btn primary" id="optGo" style="width:100%${ready ? "" : ";opacity:.5"}" ${ready ? "" : "disabled"}>⚡ Optimize my route</button>`;
   box.innerHTML = html;
+}
+
+/* The "you're short on meals" helper: one button → tap-to-add chips. */
+function renderOptSugg(days) {
+  if (opt.suggBusy) return `<div class="opt-warn">⏳ Looking for good spots near your hotel (OpenStreetMap)…</div>`;
+  if (opt.sugg === "error") return `<div class="opt-warn">😕 Couldn't load suggestions right now — try again in a moment.</div><button class="btn" id="optSuggest" style="width:100%">🍳 Retry suggestions</button>`;
+  if (!opt.sugg) return `<button class="btn" id="optSuggest" style="width:100%">🍳 Suggest nearby breakfast / lunch / dinner spots</button>`;
+  const taken = new Set(opt.places.map(p => p.name.toLowerCase()));
+  let html = "";
+  OPT_MEALS.forEach(m => {
+    const need = days - opt.places.filter(p => p.category === m && p.status === "ok").length;
+    if (need <= 0) return;
+    const list = opt.sugg[m] || [];
+    html += `<div class="opt-sug-h">${catStyle(m).emoji} ${m} — need ${need} more, tap to add:</div><div>`;
+    if (!list.length) html += `<span class="sub">Nothing found near the hotel — add one by name above.</span>`;
+    list.forEach((sg, i) => {
+      const dup = taken.has(sg.name.toLowerCase());
+      html += `<button class="opt-sug" data-osug="${m}:${i}" ${dup ? "disabled" : ""}>＋ ${esc(sg.name)} · ${sg.d < 1 ? Math.round(sg.d * 1000) + " m" : sg.d.toFixed(1) + " km"}</button>`;
+    });
+    html += `</div>`;
+  });
+  return html;
 }
 
 /* ---- The optimizer itself ---- */
@@ -1459,7 +1563,7 @@ function optScheduleDay(hotel, seq, startMin, dayIdx) {
 function optRun() {
   const { days, missing } = optRules();
   if (missing.length || opt.busy) return;
-  const hotelLoc = parseCoords($("optHotelLoc").value.trim()) || HOTEL;
+  const hotelLoc = optHotelCoords();
   const hotel = { name: $("optHotelName").value.trim() || "Hotel", lat: hotelLoc.lat, lng: hotelLoc.lng };
   const startParsed = parseMin($("optStart").value);
   const startMin = startParsed != null ? startParsed : 540;
@@ -1532,6 +1636,17 @@ $("optReview").addEventListener("click", e => {
   }
   const del = e.target.closest("[data-odel]");
   if (del) { opt.places.splice(+del.dataset.odel, 1); renderOptReview(); return; }
+  const sug = e.target.closest("[data-osug]");
+  if (sug && !sug.disabled) {
+    const [m, i] = sug.dataset.osug.split(":");
+    const sgList = opt.sugg && opt.sugg[m];
+    const sg = sgList && sgList[+i];
+    if (sg && !opt.places.some(p => p.name.toLowerCase() === sg.name.toLowerCase())) {
+      opt.places.push({ name: sg.name, category: m, lat: sg.lat, lng: sg.lng, status: "ok" });
+    }
+    renderOptReview(); return;
+  }
+  if (e.target.closest("#optSuggest")) { optSuggest(); return; }
   if (e.target.closest("#optGo")) optRun();
 });
 $("optReview").addEventListener("input", e => {
