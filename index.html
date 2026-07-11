@@ -286,6 +286,25 @@
   .dist { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
   .dist.far { color: #a15c00; }
 
+  /* ---------- Route optimizer ---------- */
+  .opt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .opt-row { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .opt-status { width: 22px; text-align: center; flex: 0 0 auto; }
+  .opt-name { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .opt-name small { display: block; color: var(--muted); font-weight: 500; }
+  .opt-cat { border: 1px solid var(--line); background: var(--soft); font: inherit; font-size: 12px; font-weight: 650; border-radius: 999px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+  .opt-cat.meal { background: #fff0e6; border-color: #ffd0ad; color: #b45309; }
+  .opt-x { border: 0; background: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 6px; }
+  .opt-fix { width: 100%; margin: 6px 0 4px; font: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid #eecac4; border-radius: 9px; }
+  .opt-warn { background: #fff7da; border: 1px solid #f0db8c; color: #6b551a; border-radius: 10px; padding: 9px 11px; font-size: 13px; margin: 12px 0; line-height: 1.45; }
+  .opt-ok { background: #e7f6ec; border: 1px solid #b7e4c7; color: #1a7f3c; border-radius: 10px; padding: 9px 11px; font-size: 13px; margin: 12px 0; line-height: 1.45; }
+  .opt-day { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px; margin: 12px 0; }
+  .opt-day h4 { margin: 0 0 4px; font-size: 15px; }
+  .opt-day .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .opt-stop { display: flex; gap: 9px; font-size: 13.5px; padding: 5px 0; align-items: baseline; }
+  .opt-stop .t { font-variant-numeric: tabular-nums; font-weight: 700; flex: 0 0 44px; }
+  .opt-leg { color: var(--muted); font-size: 11.5px; padding-left: 53px; }
+
   @media (min-width: 720px) {
     #map { height: 420px; }
     .modal { align-items: center; }
@@ -320,6 +339,7 @@
         <button id="mMemories">💞 &nbsp;Memories &amp; stamps</button>
         <button id="mBookings">🎟 &nbsp;Bookings</button>
         <button id="mEats">🍽️ &nbsp;Eat &amp; drink guide</button>
+        <button id="mOptimize">🧭 &nbsp;Route optimizer</button>
         <button id="mPhrases">🗣 &nbsp;Phrasebook &amp; tipping</button>
         <button id="mPlaylist">🎶 &nbsp;Paris playlist</button>
         <button id="mSync">☁️ &nbsp;Cloud sync</button>
@@ -399,6 +419,36 @@
     <h2 id="sheetTitle" style="font-size:18px;margin:0;letter-spacing:-.01em"></h2>
   </div>
   <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- Route optimizer sheet -->
+<div class="sheet hidden" id="optSheet">
+  <div class="sheet-head">
+    <button class="icon-btn" id="optBack" aria-label="Back">←</button>
+    <h2 style="font-size:18px;margin:0;letter-spacing:-.01em">Route optimizer 🧭</h2>
+  </div>
+  <div class="sheet-body">
+    <p class="sub">
+      Paste the places from your Google Maps list — <b>one per line</b>. (Google doesn't let web apps open a
+      shared-list link directly, so open your saved list in Maps and copy the place names out.) A line can also
+      include a full Maps link or "lat, lng", and you can tag meals inline with
+      <b>#breakfast</b> <b>#lunch</b> <b>#dinner</b> — otherwise categories are guessed and you can tap to change them.
+    </p>
+    <div class="field"><label>Places — one per line</label>
+      <textarea id="optInput" style="min-height:150px" placeholder="Louvre Museum&#10;Sainte-Chapelle&#10;Wani #breakfast&#10;Bouillon Racine #lunch&#10;Brasserie des Prés #dinner&#10;Angelina https://maps.google.com/…"></textarea>
+    </div>
+    <div class="opt-grid">
+      <div class="field"><label>Days</label><input id="optDays" type="number" min="1" max="7" value="2" inputmode="numeric"/></div>
+      <div class="field"><label>Each day starts at</label><input id="optStart" value="09:00" inputmode="numeric"/></div>
+    </div>
+    <div class="loc-box">
+      <div class="field" style="margin:0"><label>Hotel — every day starts &amp; ends here</label><input id="optHotelName" value="Hôtel Aramis Saint-Germain"/></div>
+      <div class="field" style="margin:10px 0 0"><label>Hotel location (Maps link or "lat, lng")</label><input id="optHotelLoc" placeholder="48.8487, 2.3263"/></div>
+    </div>
+    <button class="btn primary" id="optParse" style="width:100%">📍 Find these places</button>
+    <div id="optReview"></div>
+    <div id="optPlan"></div>
+  </div>
 </div>
 
 <!-- Memory editor (photo + note) -->
@@ -1154,6 +1204,348 @@ $("sheetBody").addEventListener("input", e => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Route optimizer — paste a Google Maps list, get a day-by-day plan  */
+/*  House rules: every day starts & ends at the hotel and must have a  */
+/*  breakfast, a lunch and a dinner. Other stops are clustered into    */
+/*  days, ordered with nearest-neighbour + 2-opt, then timed (lunch    */
+/*  not before 12:30, dinner not before 19:30).                        */
+/* ------------------------------------------------------------------ */
+const OPT_CATS = ["Sight", "Museum", "Breakfast", "Lunch", "Dinner", "Walk / Rest", "Bar"];
+const OPT_MEALS = ["Breakfast", "Lunch", "Dinner"];
+const OPT_DUR = { Breakfast: 40, Lunch: 75, Dinner: 90, Museum: 120, Sight: 45, "Walk / Rest": 40, Bar: 60 };
+const OPT_MEAL_EARLIEST = { Lunch: 12 * 60 + 30, Dinner: 19 * 60 + 30 };
+const OPT_TAGS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", sight: "Sight", museum: "Museum", bar: "Bar", walk: "Walk / Rest" };
+let opt = { places: [], plan: null, busy: false };
+
+function optGuessCat(name) {
+  if (/breakfast|brunch|coffee|café|\bcafe\b|boulangerie|bakery|p[âa]tisserie/i.test(name)) return "Breakfast";
+  if (/dinner|brasserie/i.test(name)) return "Dinner";
+  if (/lunch|bistro|restaurant|bouillon|cr[êe]perie|trattoria|pizzeria/i.test(name)) return "Lunch";
+  if (/\bbar\b|cocktail|jazz|club/i.test(name)) return "Bar";
+  if (/mus[ée]e|museum|galerie|gallery|louvre|orsay|fondation/i.test(name)) return "Museum";
+  if (/jardin|garden|\bparc\b|\bpark\b|promenade|berges/i.test(name)) return "Walk / Rest";
+  return "Sight";
+}
+
+/* One pasted line → { name, category, lat?, lng? }. Accepts "Name",
+   "Name #dinner", "Name <full maps url>", "Name 48.85, 2.33" and bullets. */
+function optParseLine(raw) {
+  let t = raw.replace(/^\s*(?:[-•·*]|\d+[.)])\s*/, "").trim();
+  if (!t) return null;
+  let lat = null, lng = null, cat = null;
+  const tag = t.match(/#(breakfast|lunch|dinner|sight|museum|bar|walk)\b/i);
+  if (tag) { cat = OPT_TAGS[tag[1].toLowerCase()]; t = (t.slice(0, tag.index) + t.slice(tag.index + tag[0].length)).trim(); }
+  const url = t.match(/https?:\/\/\S+/);
+  if (url) {
+    const c = parseCoords(url[0]);
+    if (c) { lat = c.lat; lng = c.lng; }
+    t = (t.slice(0, url.index) + t.slice(url.index + url[0].length)).trim();
+  }
+  const tail = t.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+  if (tail) { lat = +tail[1]; lng = +tail[2]; t = t.slice(0, tail.index).trim(); }
+  t = t.replace(/[|,;:–—-]+\s*$/, "").trim();
+  if (!t && lat == null) return null;
+  const name = t || "Pinned place";
+  return { name, category: cat || optGuessCat(name), lat, lng, status: lat != null ? "ok" : "todo" };
+}
+
+/* Free geocoding via OpenStreetMap Nominatim, biased to central Paris. */
+async function optGeocode(name) {
+  const q = /paris/i.test(name) ? name : name + ", Paris, France";
+  const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
+    + "&viewbox=2.20,48.92,2.48,48.80&q=" + encodeURIComponent(q);
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const j = await r.json();
+  return (j && j.length) ? { lat: +j[0].lat, lng: +j[0].lon } : null;
+}
+
+async function optLocateAll() {
+  if (opt.busy) return;
+  const lines = $("optInput").value.split(/\r?\n/).map(optParseLine).filter(Boolean);
+  if (!lines.length) { alert("Paste at least one place first — one per line."); return; }
+  opt.places = lines; opt.plan = null; renderOptPlan();
+  opt.busy = true; renderOptReview();
+  for (const p of opt.places) {
+    if (p.status === "ok") continue;
+    p.status = "loading"; renderOptReview();
+    try {
+      const c = await optGeocode(p.name);
+      if (c) { p.lat = c.lat; p.lng = c.lng; p.status = "ok"; } else p.status = "miss";
+    } catch (e) { p.status = "miss"; }
+    renderOptReview();
+    await new Promise(res => setTimeout(res, 1100)); // Nominatim asks for ≤ 1 request/sec
+  }
+  opt.busy = false; renderOptReview();
+}
+
+function optRules() {
+  const days = Math.min(7, Math.max(1, Math.round(+$("optDays").value) || 1));
+  const missing = [];
+  OPT_MEALS.forEach(m => {
+    const have = opt.places.filter(p => p.category === m && p.status === "ok").length;
+    if (have < days) missing.push(`${days - have} ${m.toLowerCase()} spot${days - have > 1 ? "s" : ""}`);
+  });
+  return { days, missing };
+}
+
+function renderOptReview() {
+  const box = $("optReview");
+  if (!opt.places.length) { box.innerHTML = ""; return; }
+  const { days, missing } = optRules();
+  const located = opt.places.filter(p => p.status === "ok").length;
+  let html = `<h4>Your places · ${located}/${opt.places.length} located</h4>`;
+  opt.places.forEach((p, i) => {
+    const icon = { ok: "✅", loading: "⏳", miss: "❌" }[p.status] || "▫️";
+    const cs = catStyle(p.category);
+    const showFix = p.status === "miss" && !opt.busy;
+    html += `<div><div class="opt-row">
+      <span class="opt-status">${icon}</span>
+      <span class="opt-name">${esc(p.name)}${showFix ? `<small>Not found — paste a full Maps link or "lat, lng" below</small>` : ""}</span>
+      <button class="opt-cat ${OPT_MEALS.includes(p.category) ? "meal" : ""}" data-ocat="${i}" title="Tap to change category">${cs.emoji} ${esc(p.category)}</button>
+      <button class="opt-x" data-odel="${i}" aria-label="Remove">✕</button>
+    </div>${showFix ? `<input class="opt-fix" data-ofix="${i}" placeholder="https://maps.google.com/…  or  48.8566, 2.3522"/>` : ""}</div>`;
+  });
+  if (opt.busy) {
+    html += `<div class="opt-warn">⏳ Locating your places (free OpenStreetMap search, about one per second)…</div>`;
+  } else if (missing.length) {
+    html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, or tap a category chip to retag a place.</div>`;
+  } else {
+    html += `<div class="opt-ok">✅ Rules satisfied — every day gets breakfast, lunch &amp; dinner and starts/ends at your hotel.</div>`;
+  }
+  const ready = !opt.busy && !missing.length && located > 0;
+  html += `<button class="btn primary" id="optGo" style="width:100%${ready ? "" : ";opacity:.5"}" ${ready ? "" : "disabled"}>⚡ Optimize my route</button>`;
+  box.innerHTML = html;
+}
+
+/* ---- The optimizer itself ---- */
+function optDist(a, b) { return haversine(a, b); }
+
+/* k-means with farthest-first seeding, then a balancing pass so no day
+   takes more than its fair share of stops. */
+function optClusters(pts, k) {
+  const out = Array.from({ length: k }, () => []);
+  if (!pts.length) return out;
+  const kk = Math.min(k, pts.length);
+  const cents = [{ lat: pts[0].lat, lng: pts[0].lng }];
+  while (cents.length < kk) {
+    let best = pts[0], bd = -1;
+    pts.forEach(p => {
+      const d = Math.min(...cents.map(c => optDist(p, c)));
+      if (d > bd) { bd = d; best = p; }
+    });
+    cents.push({ lat: best.lat, lng: best.lng });
+  }
+  let assign = pts.map(() => 0);
+  for (let iter = 0; iter < 12; iter++) {
+    assign = pts.map(p => {
+      let bi = 0, bd = Infinity;
+      cents.forEach((c, i) => { const d = optDist(p, c); if (d < bd) { bd = d; bi = i; } });
+      return bi;
+    });
+    cents.forEach((c, i) => {
+      const mine = pts.filter((_, j) => assign[j] === i);
+      if (mine.length) {
+        c.lat = mine.reduce((sum, p) => sum + p.lat, 0) / mine.length;
+        c.lng = mine.reduce((sum, p) => sum + p.lng, 0) / mine.length;
+      }
+    });
+  }
+  const cap = Math.ceil(pts.length / kk);
+  const counts = Array(kk).fill(0);
+  assign.forEach(a => counts[a]++);
+  let guard = 0;
+  while (guard++ < 300) {
+    const over = counts.findIndex(c => c > cap);
+    if (over < 0) break;
+    let bj = -1, bd = Infinity, target = -1;
+    pts.forEach((p, j) => {
+      if (assign[j] !== over) return;
+      cents.forEach((c, i) => {
+        if (i === over || counts[i] >= cap) return;
+        const d = optDist(p, c);
+        if (d < bd) { bd = d; bj = j; target = i; }
+      });
+    });
+    if (bj < 0) break;
+    counts[over]--; counts[target]++; assign[bj] = target;
+  }
+  pts.forEach((p, j) => out[assign[j]].push(p));
+  return out;
+}
+
+/* Give each day its breakfast/lunch/dinner globally (best fit across all
+   days at once, so day 1 can't steal the spot that suits day 2 better).
+   Breakfast is scored "close to the hotel, ideally on the way to the
+   day's area"; lunch & dinner "close to the day's area". */
+function optAssignMeals(pool, centroids, hotel) {
+  const res = centroids.map(() => ({}));
+  OPT_MEALS.forEach(m => {
+    const pairs = [];
+    pool[m].forEach(p => centroids.forEach((c, d) => {
+      const cost = m === "Breakfast" ? optDist(p, hotel) + 0.5 * optDist(p, c) : optDist(p, c);
+      pairs.push({ p, d, cost });
+    }));
+    pairs.sort((a, b) => a.cost - b.cost);
+    const used = new Set();
+    pairs.forEach(({ p, d }) => {
+      if (res[d][m] || used.has(p)) return;
+      res[d][m] = p; used.add(p);
+    });
+    pool[m] = pool[m].filter(p => !used.has(p));
+  });
+  return res;
+}
+
+/* 2-opt with fixed endpoints (breakfast stays first, dinner stays last). */
+function optTwoOpt(seq) {
+  let s2 = seq.slice(), improved = true, guard = 0;
+  while (improved && guard++ < 60) {
+    improved = false;
+    for (let i = 1; i < s2.length - 2; i++) {
+      for (let j = i + 1; j < s2.length - 1; j++) {
+        const delta = optDist(s2[i - 1], s2[j]) + optDist(s2[i], s2[j + 1])
+                    - optDist(s2[i - 1], s2[i]) - optDist(s2[j], s2[j + 1]);
+        if (delta < -1e-9) { s2 = s2.slice(0, i).concat(s2.slice(i, j + 1).reverse(), s2.slice(j + 1)); improved = true; }
+      }
+    }
+  }
+  return s2;
+}
+
+/* breakfast → activities (NN + 2-opt) → dinner, with lunch slotted into the
+   second half of the walk wherever it adds the least detour. */
+function optOrderDay(bfast, lunch, dinner, acts) {
+  let rest = acts.slice(), route = [], cur = bfast;
+  while (rest.length) {
+    let bi = 0, bd = Infinity;
+    rest.forEach((p, i) => { const d = optDist(cur, p); if (d < bd) { bd = d; bi = i; } });
+    cur = rest.splice(bi, 1)[0]; route.push(cur);
+  }
+  const chain = optTwoOpt([bfast].concat(route, [dinner]));
+  const lo = Math.min(Math.max(1, Math.ceil((chain.length - 2) / 2)), chain.length - 2);
+  let best = Math.max(0, chain.length - 2), bd = Infinity;
+  for (let i = Math.max(0, lo); i <= chain.length - 2; i++) {
+    const add = optDist(chain[i], lunch) + optDist(lunch, chain[i + 1]) - optDist(chain[i], chain[i + 1]);
+    if (add < bd) { bd = add; best = i; }
+  }
+  chain.splice(best + 1, 0, lunch);
+  return chain;
+}
+
+function optTravelMin(a, b) {
+  const l = legInfo(a, b);
+  if (!l.ok) return 10;
+  return l.long ? Math.round(12 + l.km * 4) : l.min; // long hop → metro/taxi estimate
+}
+
+function optScheduleDay(hotel, seq, startMin, dayIdx) {
+  const dd = new Date(TRIP_START); dd.setDate(dd.getDate() + dayIdx);
+  const date = dd.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const stops = [s(fmtMin(startMin), hotel.name, "Hotel", "Start", "Leave the hotel.", hotel.lat, hotel.lng)];
+  let cur = startMin, prev = hotel;
+  seq.forEach(p => {
+    cur += optTravelMin(prev, p);
+    if (OPT_MEAL_EARLIEST[p.category] != null) cur = Math.max(cur, OPT_MEAL_EARLIEST[p.category]);
+    const dur = OPT_DUR[p.category] || 45;
+    stops.push(s(fmtMin(cur), p.name, p.category, "~" + dur + " min", "", p.lat, p.lng));
+    cur += dur; prev = p;
+  });
+  cur += optTravelMin(prev, hotel);
+  stops.push(s(fmtMin(cur), hotel.name, "Hotel", "End", "Back to the hotel.", hotel.lat, hotel.lng));
+  return { date, stops };
+}
+
+function optRun() {
+  const { days, missing } = optRules();
+  if (missing.length || opt.busy) return;
+  const hotelLoc = parseCoords($("optHotelLoc").value.trim()) || HOTEL;
+  const hotel = { name: $("optHotelName").value.trim() || "Hotel", lat: hotelLoc.lat, lng: hotelLoc.lng };
+  const startParsed = parseMin($("optStart").value);
+  const startMin = startParsed != null ? startParsed : 540;
+  const usable = opt.places.filter(p => p.status === "ok");
+  const skipped = opt.places.length - usable.length;
+  const pool = { Breakfast: [], Lunch: [], Dinner: [] };
+  const acts = [];
+  usable.forEach(p => { (pool[p.category] || acts).push(p); });
+  const clusters = optClusters(acts, days);
+  const centroids = clusters.map(cl => cl.length
+    ? { lat: cl.reduce((sum, p) => sum + p.lat, 0) / cl.length, lng: cl.reduce((sum, p) => sum + p.lng, 0) / cl.length }
+    : hotel);
+  const meals = optAssignMeals(pool, centroids, hotel);
+  const planDays = [];
+  for (let d = 0; d < days; d++) {
+    const seq = optOrderDay(meals[d].Breakfast, meals[d].Lunch, meals[d].Dinner, clusters[d]);
+    planDays.push(optScheduleDay(hotel, seq, startMin, d));
+  }
+  const unused = [].concat(pool.Breakfast, pool.Lunch, pool.Dinner).map(p => p.name);
+  opt.plan = { days: planDays, skipped, unused };
+  renderOptPlan();
+  $("optPlan").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderOptPlan() {
+  const box = $("optPlan");
+  if (!opt.plan) { box.innerHTML = ""; return; }
+  let html = `<h4>Optimized plan ✨</h4>`;
+  if (opt.plan.skipped) html += `<div class="opt-warn">⚠️ ${opt.plan.skipped} place${opt.plan.skipped > 1 ? "s" : ""} without a location ${opt.plan.skipped > 1 ? "were" : "was"} left out — fix ${opt.plan.skipped > 1 ? "them" : "it"} above and re-optimize.</div>`;
+  if (opt.plan.unused.length) html += `<div class="opt-warn">🍽️ More food spots than days needed — left out: ${opt.plan.unused.map(esc).join(", ")}.</div>`;
+  opt.plan.days.forEach((d, i) => {
+    let walkKm = 0;
+    for (let j = 0; j < d.stops.length - 1; j++) { const l = legInfo(d.stops[j], d.stops[j + 1]); if (l.ok) walkKm += l.km; }
+    html += `<div class="opt-day"><h4>Day ${i + 1} · ${esc(d.date)}</h4><div class="meta">${d.stops.length} stops · ~${walkKm.toFixed(1)} km between stops</div>`;
+    d.stops.forEach((st, j) => {
+      const cs = catStyle(st.category);
+      html += `<div class="opt-stop"><span class="t">${esc(st.time)}</span><span>${cs.emoji}</span><span>${esc(st.title)}</span></div>`;
+      if (j < d.stops.length - 1) {
+        const l = legInfo(st, d.stops[j + 1]);
+        if (l.ok && l.km >= 0.05) html += `<div class="opt-leg">${l.long ? "🚕 " + l.km.toFixed(1) + " km — metro/taxi" : "🚶 " + l.km.toFixed(1) + " km · " + l.min + " min"}</div>`;
+      }
+    });
+    html += `</div>`;
+  });
+  html += `<button class="btn primary" id="optApply" style="width:100%">✅ Use this plan — replaces the current days</button>
+    <p class="sub" style="margin-top:8px">This replaces your current plan on this device. Tip: ⋯ menu → <b>Backup</b> first; <b>Reset</b> always brings back the original plan.</p>`;
+  box.innerHTML = html;
+}
+
+function optApply() {
+  if (!opt.plan) return;
+  if (!confirm("Replace your current plan with this optimized one?")) return;
+  data.days = opt.plan.days.map((d, i) => ({ id: "d" + (i + 1), label: "Day " + (i + 1), date: d.date, title: "Optimized day", stops: d.stops }));
+  activeDay = 0; save(); closeOpt(); render();
+}
+
+function openOpt() { $("optSheet").classList.remove("hidden"); $("optSheet").scrollTop = 0; }
+function closeOpt() { $("optSheet").classList.add("hidden"); }
+
+$("mOptimize").addEventListener("click", () => { $("menu").classList.add("hidden"); openOpt(); });
+$("optBack").addEventListener("click", closeOpt);
+$("optParse").addEventListener("click", optLocateAll);
+$("optDays").addEventListener("input", () => { if (opt.places.length) renderOptReview(); });
+$("optReview").addEventListener("click", e => {
+  const cat = e.target.closest("[data-ocat]");
+  if (cat) {
+    const p = opt.places[+cat.dataset.ocat];
+    p.category = OPT_CATS[(OPT_CATS.indexOf(p.category) + 1) % OPT_CATS.length];
+    renderOptReview(); return;
+  }
+  const del = e.target.closest("[data-odel]");
+  if (del) { opt.places.splice(+del.dataset.odel, 1); renderOptReview(); return; }
+  if (e.target.closest("#optGo")) optRun();
+});
+$("optReview").addEventListener("input", e => {
+  const fix = e.target.closest("[data-ofix]"); if (!fix) return;
+  const c = parseCoords(fix.value);
+  if (c) {
+    const p = opt.places[+fix.dataset.ofix];
+    p.lat = c.lat; p.lng = c.lng; p.status = "ok";
+    renderOptReview();
+  }
+});
+$("optPlan").addEventListener("click", e => { if (e.target.closest("#optApply")) optApply(); });
+
+/* ------------------------------------------------------------------ */
 /*  Export / import / reset                                            */
 /* ------------------------------------------------------------------ */
 function exportData() {
@@ -1362,7 +1754,7 @@ $("syncOut").addEventListener("click", async () => {
 window.addEventListener("focus", () => { if (sbUser) cloudPull(); });
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { closeModal(); closeMem(); closeSheet(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); $("syncModal").classList.add("hidden"); }
+  if (e.key === "Escape") { closeModal(); closeMem(); closeSheet(); closeOpt(); $("menu").classList.add("hidden"); $("darePop").classList.add("hidden"); $("syncModal").classList.add("hidden"); }
 });
 
 // Refresh the "happening now" highlight each minute (but not while a dialog is open).
