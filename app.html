@@ -473,6 +473,10 @@
       This plans the whole trip: places are clustered into days, ordered to minimise walking, and every day
       starts &amp; ends at your hotel. Meals are optional: missing ones are shown as reminders, not requirements.
     </p>
+    <details class="loc-box" style="margin-bottom:12px">
+      <summary style="cursor:pointer;font-weight:700">How the route is optimized</summary>
+      <p class="sub" style="margin:9px 0 0;line-height:1.5">Places are grouped into geographically compact, balanced days. Each day is ordered with a nearest-stop route and improved by swapping route segments to reduce distance. The hotel anchors the start/end; selected cafés and restaurants fill optional breakfast, lunch and dinner slots at sensible times. Planning uses coordinate-based walking estimates; the Google/Apple buttons provide the final street-level directions.</p>
+    </details>
     <div class="loc-box" id="psBox">
       <b style="font-size:13.5px">🔎 Search &amp; add places</b>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -1800,6 +1804,10 @@ async function optLocateAll() {
     renderOptReview();
   }
   opt.busy = false; renderOptReview();
+  // When the user's own cafés/restaurants cannot cover the optional meal
+  // slots, proactively load nearby ideas. Recommendations are never added
+  // automatically; the user remains in control.
+  if (optRules().missing.length && !opt.sugg) optSuggest();
 }
 
 /* Recommendations near the hotel. Try Google first when configured, but always
@@ -1909,10 +1917,14 @@ function optMaxDays() { const t = curTrip(); return t ? t.days.length : 7; }
 function optRules() {
   const days = Math.min(optMaxDays(), Math.max(1, Math.round(+$("optDays").value) || 1));
   const missing = [];
-  OPT_MEALS.forEach(m => {
-    const have = opt.places.filter(p => p.category === m && p.status === "ok").length;
-    if (have < days) missing.push(`${days - have} ${m.toLowerCase()} spot${days - have > 1 ? "s" : ""}`);
-  });
+  const ok = opt.places.filter(p => p.status === "ok");
+  const breakfastHave = ok.filter(p => p.category === "Breakfast" || p.category === "Cafe / Bakery").length;
+  const lunchSlots = Math.max(0, days - Math.min(days, ok.filter(p => p.category === "Lunch").length));
+  const dinnerSlots = Math.max(0, days - Math.min(days, ok.filter(p => p.category === "Dinner").length));
+  const flexibleRestaurants = ok.filter(p => p.category === "Restaurant").length;
+  const mainMealMissing = Math.max(0, lunchSlots + dinnerSlots - flexibleRestaurants);
+  if (breakfastHave < days) missing.push(`${days - breakfastHave} breakfast spot${days - breakfastHave > 1 ? "s" : ""}`);
+  if (mainMealMissing) missing.push(`${mainMealMissing} lunch/dinner spot${mainMealMissing > 1 ? "s" : ""}`);
   return { days, missing };
 }
 
@@ -2058,6 +2070,32 @@ function optAssignMeals(pool, centroids, hotel) {
   return res;
 }
 
+/* Turn generic food venue types into itinerary roles only at planning time.
+   Explicit #breakfast/#lunch/#dinner choices win; flexible cafés and
+   restaurants fill remaining slots by proximity and are cloned with the role
+   they serve on that day. Surplus venues remain optional alternatives. */
+function optFillFlexibleMeals(meals, cafes, restaurants, centroids, hotel) {
+  const assign = (candidates, roles) => {
+    const left = candidates.slice();
+    roles.forEach(role => {
+      for (let d = 0; d < centroids.length; d++) {
+        if (meals[d][role] || !left.length) continue;
+        let best = 0, bd = Infinity;
+        left.forEach((p, i) => {
+          const cost = role === "Breakfast" ? optDist(p, hotel) + 0.5 * optDist(p, centroids[d]) : optDist(p, centroids[d]);
+          if (cost < bd) { bd = cost; best = i; }
+        });
+        const chosen = left.splice(best, 1)[0];
+        meals[d][role] = { ...chosen, category: role, sourceCategory: chosen.category };
+      }
+    });
+    return left;
+  };
+  const unusedCafes = assign(cafes, ["Breakfast"]);
+  const unusedRestaurants = assign(restaurants, ["Lunch", "Dinner"]);
+  return unusedCafes.concat(unusedRestaurants);
+}
+
 function optTwoOpt(seq) {
   let s2 = seq.slice(), improved = true, guard = 0;
   while (improved && guard++ < 60) {
@@ -2128,19 +2166,25 @@ function optRun() {
   const usable = opt.places.filter(p => p.status === "ok");
   const skipped = opt.places.length - usable.length;
   const pool = { Breakfast: [], Lunch: [], Dinner: [] };
-  const acts = [];
-  usable.forEach(p => { (pool[p.category] || acts).push(p); });
+  const acts = [], cafes = [], restaurants = [];
+  usable.forEach(p => {
+    if (pool[p.category]) pool[p.category].push(p);
+    else if (p.category === "Cafe / Bakery") cafes.push(p);
+    else if (p.category === "Restaurant") restaurants.push(p);
+    else acts.push(p);
+  });
   const clusters = optClusters(acts, days);
   const centroids = clusters.map(cl => cl.length
     ? { lat: cl.reduce((sum, p) => sum + p.lat, 0) / cl.length, lng: cl.reduce((sum, p) => sum + p.lng, 0) / cl.length }
     : hotel);
   const meals = optAssignMeals(pool, centroids, hotel);
+  const unusedFlexible = optFillFlexibleMeals(meals, cafes, restaurants, centroids, hotel);
   const planDays = [];
   for (let d = 0; d < days; d++) {
     const seq = optOrderDay(meals[d].Breakfast, meals[d].Lunch, meals[d].Dinner, clusters[d], hotel);
     planDays.push(optScheduleDay(hotel, seq, startFor(d), d));
   }
-  const unused = [].concat(pool.Breakfast, pool.Lunch, pool.Dinner).map(p => p.name);
+  const unused = [].concat(pool.Breakfast, pool.Lunch, pool.Dinner, unusedFlexible).map(p => p.name);
   opt.plan = { days: planDays, skipped, unused };
   renderOptPlan();
   $("optPlan").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2151,7 +2195,7 @@ function renderOptPlan() {
   if (!opt.plan) { box.innerHTML = ""; return; }
   let html = `<h4>Optimized plan ✨</h4>`;
   if (opt.plan.skipped) html += `<div class="opt-warn">⚠️ ${opt.plan.skipped} place${opt.plan.skipped > 1 ? "s" : ""} without a location ${opt.plan.skipped > 1 ? "were" : "was"} left out — fix ${opt.plan.skipped > 1 ? "them" : "it"} above and re-optimize.</div>`;
-  if (opt.plan.unused.length) html += `<div class="opt-warn">🍽️ More food spots than days needed — left out: ${opt.plan.unused.map(esc).join(", ")}.</div>`;
+  if (opt.plan.unused.length) html += `<div class="opt-warn">🍽️ Extra food options were kept out of the timed route: ${opt.plan.unused.map(esc).join(", ")}.</div>`;
   opt.plan.days.forEach((d, i) => {
     let walkKm = 0;
     for (let j = 0; j < d.stops.length - 1; j++) { const l = legInfo(d.stops[j], d.stops[j + 1]); if (l.ok) walkKm += l.km; }
