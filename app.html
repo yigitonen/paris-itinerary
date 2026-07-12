@@ -479,9 +479,9 @@
       <textarea id="optInput" style="min-height:150px" placeholder="Louvre Museum&#10;Sainte-Chapelle&#10;Wani #breakfast&#10;Bouillon Racine #lunch&#10;Brasserie des Prés #dinner"></textarea>
     </div>
     <div class="field"><label>City / destination — helps find the right places</label><input id="optCity" autocomplete="off"/></div>
-    <div class="opt-grid">
-      <div class="field"><label>Days</label><input id="optDays" type="number" min="1" inputmode="numeric"/></div>
-      <div class="field"><label>Each day starts at</label><input id="optStart" value="09:00" inputmode="numeric"/></div>
+    <div class="field"><label>Days</label><input id="optDays" type="number" min="1" inputmode="numeric"/></div>
+    <div class="field"><label>When can you head out each day? <span style="font-weight:500">(landing late? just set that day later)</span></label>
+      <div class="opt-grid" id="optStarts"></div>
     </div>
     <div class="loc-box">
       <div class="field" style="margin:0"><label>Hotel — every day starts &amp; ends here</label><input id="optHotelName"/></div>
@@ -1347,7 +1347,22 @@ const OPT_MEALS = ["Breakfast", "Lunch", "Dinner"];
 const OPT_DUR = { Breakfast: 40, Lunch: 75, Dinner: 90, Museum: 120, Sight: 45, "Walk / Rest": 40, Bar: 60 };
 const OPT_MEAL_EARLIEST = { Lunch: 12 * 60 + 30, Dinner: 19 * 60 + 30 };
 const OPT_TAGS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", sight: "Sight", museum: "Museum", bar: "Bar", walk: "Walk / Rest" };
-let opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false };
+let opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false, starts: {} };
+
+/* One "head out at" time per day — friendlier than a single global start
+   (day 1 might begin after a 13:00 landing, the rest at 09:00). */
+function renderOptStarts() {
+  const box = $("optStarts"); if (!box) return;
+  const t = curTrip();
+  const days = Math.min(optMaxDays(), Math.max(1, Math.round(+$("optDays").value) || 1));
+  let html = "";
+  for (let i = 0; i < days; i++) {
+    const dateLbl = t && t.days[i] ? " · " + fmtDay(t.days[i].date) : "";
+    html += `<div class="field" style="margin:0"><label>Day ${i + 1}${esc(dateLbl)}</label>
+      <input type="time" data-ostart="${i}" value="${esc(opt.starts[i] || "09:00")}"/></div>`;
+  }
+  box.innerHTML = html;
+}
 
 function optGuessCat(name) {
   if (/breakfast|brunch|coffee|café|\bcafe\b|boulangerie|bakery|p[âa]tisserie/i.test(name)) return "Breakfast";
@@ -1393,6 +1408,26 @@ async function optResolveCity() {
   return true;
 }
 
+/* Two free geocoders: Nominatim (addresses, landmarks) with a Photon fallback
+   (much better fuzzy matching for restaurant/shop names). A hit landing more
+   than 60 km from the destination city is rejected as a wrong-city match. */
+async function photonGeocode(name) {
+  try {
+    let u = "https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(name);
+    if (opt.city) u += "&lat=" + opt.city.lat + "&lon=" + opt.city.lng; // bias results to the city
+    const r = await fetch(u);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const f = j && j.features && j.features[0];
+    return (f && f.geometry && f.geometry.coordinates)
+      ? { lat: +f.geometry.coordinates[1], lng: +f.geometry.coordinates[0] } : null;
+  } catch (e) { return null; }
+}
+function nearCity(c) {
+  if (!c) return false;
+  if (!opt.city) return true;
+  return haversine(c, { lat: opt.city.lat, lng: opt.city.lng }) <= 60;
+}
 async function optGeocode(name) {
   let q = name, extra = "";
   if (opt.city) {
@@ -1400,12 +1435,22 @@ async function optGeocode(name) {
     const b = opt.city.box; // [south, north, west, east]
     if (b && b.length === 4) extra = "&viewbox=" + [b[2], b[1], b[3], b[0]].join(",");
   }
-  const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
-    + extra + "&q=" + encodeURIComponent(q);
-  const r = await fetch(url);
-  if (!r.ok) return null;
-  const j = await r.json();
-  return (j && j.length) ? { lat: +j[0].lat, lng: +j[0].lon } : null;
+  let hit = null;
+  try {
+    const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
+      + extra + "&q=" + encodeURIComponent(q);
+    const r = await fetch(url);
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.length) hit = { lat: +j[0].lat, lng: +j[0].lon };
+    }
+  } catch (e) { /* fall through to Photon */ }
+  if (!nearCity(hit)) hit = null;
+  if (!hit) {
+    hit = await photonGeocode(name);
+    if (!nearCity(hit)) hit = null;
+  }
+  return hit;
 }
 
 /* Home base: pasted coords → geocoded hotel → the trip's saved hotel →
@@ -1684,8 +1729,7 @@ function optRun() {
   if (missing.length || opt.busy) return;
   const hotelLoc = optHotelCoords();
   const hotel = { name: $("optHotelName").value.trim() || "Hotel", lat: hotelLoc.lat, lng: hotelLoc.lng };
-  const startParsed = parseMin($("optStart").value);
-  const startMin = startParsed != null ? startParsed : 540;
+  const startFor = d => { const m = parseMin(opt.starts[d]); return m != null ? m : 540; };
   const usable = opt.places.filter(p => p.status === "ok");
   const skipped = opt.places.length - usable.length;
   const pool = { Breakfast: [], Lunch: [], Dinner: [] };
@@ -1699,7 +1743,7 @@ function optRun() {
   const planDays = [];
   for (let d = 0; d < days; d++) {
     const seq = optOrderDay(meals[d].Breakfast, meals[d].Lunch, meals[d].Dinner, clusters[d]);
-    planDays.push(optScheduleDay(hotel, seq, startMin, d));
+    planDays.push(optScheduleDay(hotel, seq, startFor(d), d));
   }
   const unused = [].concat(pool.Breakfast, pool.Lunch, pool.Dinner).map(p => p.name);
   opt.plan = { days: planDays, skipped, unused };
@@ -1750,7 +1794,7 @@ function optApply() {
 function openOpt() {
   const t = curTrip(); if (!t) return;
   if (opt.tripId !== t.id) { // fresh planner state when switching trips
-    opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false, tripId: t.id };
+    opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false, starts: {}, tripId: t.id };
     $("optInput").value = "";
     renderOptReview(); renderOptPlan();
   }
@@ -1759,6 +1803,7 @@ function openOpt() {
   $("optDays").max = t.days.length;
   $("optHotelName").value = t.hotel ? (t.hotel.name || "") : "";
   $("optHotelLoc").value = "";
+  renderOptStarts();
   renderGImport();
   $("optSheet").classList.remove("hidden");
   $("optSheet").scrollTop = 0;
@@ -1767,7 +1812,11 @@ function closeOpt() { $("optSheet").classList.add("hidden"); }
 
 $("optBack").addEventListener("click", closeOpt);
 $("optParse").addEventListener("click", optLocateAll);
-$("optDays").addEventListener("input", () => { if (opt.places.length) renderOptReview(); });
+$("optDays").addEventListener("input", () => { renderOptStarts(); if (opt.places.length) renderOptReview(); });
+$("optStarts").addEventListener("input", e => {
+  const el = e.target.closest("[data-ostart]");
+  if (el) opt.starts[+el.dataset.ostart] = el.value;
+});
 $("optReview").addEventListener("click", e => {
   const cat = e.target.closest("[data-ocat]");
   if (cat) {
@@ -2030,23 +2079,25 @@ function parseCSV(text) {
   if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
   return rows.filter(r => r.some(c => c.trim() !== ""));
 }
+/* Takeout CSVs vary: localized headers ("Title", "Başlık", "Titel"…), and either
+   separate Title/URL columns or a single column holding "Name https://…". */
+const CSV_HEADER_WORDS = /^(title|başlık|baslik|url|note|not|comment|yorum|tags?|etiketler?|titel|titre|beschreibung|açıklama)$/i;
 function importGoogleCsv(file) {
   const reader = new FileReader();
   reader.onload = () => {
     const rows = parseCSV(String(reader.result || ""));
     if (!rows.length) { alert("That CSV looked empty."); return; }
-    let start = 0, tIdx = 0, uIdx = -1;
-    const head = rows[0].map(x => x.trim().toLowerCase());
-    if (head.includes("title")) { tIdx = head.indexOf("title"); uIdx = head.indexOf("url"); start = 1; }
     const lines = [];
-    for (let i = start; i < rows.length; i++) {
-      const r = rows[i];
-      const name = (r[tIdx] || "").trim();
-      let url = uIdx >= 0 ? (r[uIdx] || "").trim() : "";
-      if (!url) url = (r.find(c => /https?:\/\//.test(c)) || "").trim();
-      if (!name && !url) continue;
+    rows.forEach(r => {
+      const cells = r.map(c => c.trim()).filter(Boolean);
+      if (!cells.length) return;
+      const hasUrl = cells.some(c => /https?:\/\//.test(c));
+      if (!hasUrl && cells.every(c => CSV_HEADER_WORDS.test(c))) return; // header row, any locale
+      const name = cells[0];
+      if (/https?:\/\//.test(name)) { lines.push(name); return; } // single-column "Name URL" format
+      const url = cells.slice().reverse().find(c => /https?:\/\//.test(c)) || ""; // URL column is last in Takeout
       lines.push((name + " " + url).trim());
-    }
+    });
     if (!lines.length) { alert("Couldn't find any places in that CSV — is it a Takeout “Saved” list export?"); return; }
     const ta = $("optInput");
     ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + lines.join("\n");
