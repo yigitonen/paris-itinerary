@@ -1503,8 +1503,9 @@ async function optGeocode(name) {
   return hit;
 }
 
-/* ---- In-app place search: Google Places Text Search when a key is set
-   (names, addresses, ratings), Photon otherwise (no ratings). ---- */
+/* ---- In-app place search: try Google Places Text Search when a key is set
+   (names, addresses, ratings), then fall back to Photon if Google rejects the
+   key or is unreachable. A stale/restricted key should never break search. ---- */
 function rateStr(r) {
   if (r.rating == null) return "";
   return ` · ${(+r.rating).toFixed(1)}★${r.ratings ? ` (${r.ratings >= 1000 ? (r.ratings / 1000).toFixed(1) + "k" : r.ratings})` : ""}`;
@@ -1524,15 +1525,19 @@ async function searchPlaces(q) {
         headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount" },
         body: JSON.stringify(body)
       });
-      if (!r.ok) return { error: "Google search failed (HTTP " + r.status + ")" };
-      const j = await r.json();
-      return { results: (j.places || []).map(p => ({
-        name: (p.displayName && p.displayName.text) || q,
-        addr: p.formattedAddress || "",
-        lat: p.location && p.location.latitude, lng: p.location && p.location.longitude,
-        rating: p.rating, ratings: p.userRatingCount
-      })).filter(x => x.lat != null) };
-    } catch (e) { return { error: "Google search unreachable — check the network / ad-blocker" }; }
+      if (r.ok) {
+        const j = await r.json();
+        const results = (j.places || []).map(p => ({
+          name: (p.displayName && p.displayName.text) || q,
+          addr: p.formattedAddress || "",
+          lat: p.location && p.location.latitude, lng: p.location && p.location.longitude,
+          rating: p.rating, ratings: p.userRatingCount
+        })).filter(x => x.lat != null);
+        if (results.length) return { results };
+      }
+      // Continue to Photon below on HTTP errors (including invalid/restricted
+      // API keys) and on an empty Google result.
+    } catch (e) { /* Google unavailable: continue to the free fallback. */ }
   }
   try {
     let u = "https://photon.komoot.io/api/?limit=5&q=" + encodeURIComponent(qq);
