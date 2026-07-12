@@ -1540,20 +1540,28 @@ async function searchPlaces(q) {
     } catch (e) { /* Google unavailable: continue to the free fallback. */ }
   }
   try {
-    let u = "https://photon.komoot.io/api/?limit=5&q=" + encodeURIComponent(qq);
-    if (bias) u += "&lat=" + bias.lat + "&lon=" + bias.lng;
-    const r = await fetch(u);
-    if (!r.ok) return { error: "Search failed (HTTP " + r.status + ")" };
-    const j = await r.json();
-    return { results: (j.features || []).map(f => {
-      const pr = f.properties || {};
-      return {
-        name: pr.name || q,
-        addr: [pr.street, pr.city || pr.county, pr.country].filter(Boolean).join(", "),
-        lat: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[1],
-        lng: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[0]
-      };
-    }).filter(x => x.lat != null) };
+    async function photonSearch(query) {
+      let u = "https://photon.komoot.io/api/?limit=5&q=" + encodeURIComponent(query);
+      if (bias) u += "&lat=" + bias.lat + "&lon=" + bias.lng;
+      const r = await fetch(u);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      return (j.features || []).map(f => {
+        const pr = f.properties || {};
+        return {
+          name: pr.name || q,
+          addr: [pr.street, pr.city || pr.county, pr.country].filter(Boolean).join(", "),
+          lat: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[1],
+          lng: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[0]
+        };
+      }).filter(x => x.lat != null);
+    }
+    let results = await photonSearch(qq);
+    // A placeholder, misspelled, or overly broad trip destination can turn a
+    // valid POI query into zero matches (for example "Louvre, testing").
+    // Retry the user's exact query before reporting that nothing was found.
+    if (!results.length && qq !== q) results = await photonSearch(q);
+    return { results };
   } catch (e) { return { error: "Search unreachable — check the network / ad-blocker (or add a Google Places key)" }; }
 }
 
