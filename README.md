@@ -1,7 +1,20 @@
-# Paris · 2-Day Itinerary
+# Paris · 2-Day Itinerary — and Tripline
 
-A mobile-friendly, editable Paris itinerary (15–17 July 2026). Single self-contained
-`index.html` — open it on your phone via the published link.
+Two pages live here:
+
+- **`index.html`** — the original mobile-friendly, editable Paris itinerary
+  (15–17 July 2026). Untouched and safe to use during the trip.
+- **`app.html` — Tripline** (working title): the generalization of the Paris page
+  into a trip-tracking app — "Strava for vacations". Create a trip with a
+  destination, start & end dates and whoever's going (solo, couple, or group);
+  each trip gets the Paris-style day-by-day plan (day tabs, stop cards, walking
+  legs, map, route optimizer, memories, bookings). While a trip is on, the app
+  highlights where you should be right now; once the end date passes it turns
+  into a **recap** — days, stops, km walked, places loved, photos — with a
+  shareable recap card (PNG). Your existing Paris plan (including edits saved on
+  this device) is migrated in automatically as the first trip. Local-first with
+  Backup/Import; built as a mobile-first web app so it can later ship to the app
+  stores via Capacitor.
 
 ## Features
 - **Two day tabs** with clean, collapsible stop cards and an optional map.
