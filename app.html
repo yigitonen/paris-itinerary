@@ -496,7 +496,10 @@
       <div class="opt-grid" id="optStarts"></div>
     </div>
     <div class="loc-box">
-      <div class="field" style="margin:0"><label>Hotel — every day starts &amp; ends here</label><input id="optHotelName"/></div>
+      <div class="field" style="margin:0"><label>Hotel — every day starts &amp; ends here</label>
+        <div style="display:flex;gap:8px"><input id="optHotelName" autocomplete="off" style="flex:1"/><button class="btn primary" id="hotelSearchGo" type="button">Search</button></div>
+        <div id="hotelSearchResults"></div>
+      </div>
       <div class="field" style="margin:10px 0 0"><label>Hotel location — optional; the name is searched too</label><input id="optHotelLoc" placeholder="Maps link or 48.8487, 2.3263"/></div>
       <div class="field" style="margin:10px 0 0"><label>Google Places API key — optional, the most reliable lookups</label><input id="gpKey" placeholder="AIza… (stored only on this device)" autocomplete="off"/></div>
     </div>
@@ -1418,7 +1421,11 @@ async function optResolveCity() {
   try {
     const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en&q=" + encodeURIComponent(name));
     const j = r.ok ? await r.json() : [];
-    opt.city = (j && j.length) ? { name, lat: +j[0].lat, lng: +j[0].lon, box: j[0].boundingbox } : null;
+    const hit = j && j[0];
+    // Do not let a same-named shop, building or land-use feature masquerade as
+    // the destination and reject every real place as being in the wrong city.
+    const isSettlement = hit && /^(city|town|village|municipality|administrative)$/i.test(hit.addresstype || hit.type || "");
+    opt.city = isSettlement ? { name, lat: +hit.lat, lng: +hit.lon, box: hit.boundingbox } : null;
   } catch (e) { opt.city = null; }
   opt.cityCache[key] = opt.city;
   return true;
@@ -1641,6 +1648,43 @@ $("fSearchRes").addEventListener("click", e => {
   renderMsResults();
 });
 
+/* Hotel picker in the route optimizer. It uses the same Google-first search as
+   place search and presents explicit findings so a similarly named hotel is
+   never selected silently. */
+let hsState = { results: null, busy: false, error: null };
+function renderHotelSearchResults() {
+  const box = $("hotelSearchResults"); if (!box) return;
+  if (hsState.busy) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">⏳ Searching hotels…</p>`; return; }
+  if (hsState.error) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">⚠️ ${esc(hsState.error)}</p>`; return; }
+  if (!hsState.results) { box.innerHTML = ""; return; }
+  if (!hsState.results.length) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">No matching hotels found.</p>`; return; }
+  box.innerHTML = hsState.results.map((r, i) => `<div class="opt-row">
+    <span class="opt-name">${esc(r.name)}<small>${esc(r.addr)}${esc(rateStr(r))}</small></span>
+    <button class="opt-sug" style="margin:0" data-hspick="${i}">Use this hotel</button>
+  </div>`).join("");
+}
+async function runHotelSearch() {
+  const name = $("optHotelName").value.trim();
+  if (!name) { $("optHotelName").focus(); return; }
+  hsState = { results: null, busy: true, error: null }; renderHotelSearchResults();
+  const out = await searchPlaces(name);
+  hsState = { results: out.results || null, busy: false, error: out.error || null };
+  renderHotelSearchResults();
+}
+$("hotelSearchGo").addEventListener("click", runHotelSearch);
+$("optHotelName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); runHotelSearch(); } });
+$("hotelSearchResults").addEventListener("click", e => {
+  const pick = e.target.closest("[data-hspick]"); if (!pick) return;
+  const r = hsState.results && hsState.results[+pick.dataset.hspick]; if (!r) return;
+  $("optHotelName").value = r.name;
+  $("optHotelLoc").value = r.lat + ", " + r.lng;
+  opt.hotel = { lat: r.lat, lng: r.lng };
+  opt.sugg = null;
+  hsState = { results: null, busy: false, error: null };
+  renderHotelSearchResults();
+  if (opt.places.length) renderOptReview();
+});
+
 /* Home base: pasted coords → geocoded hotel → the trip's saved hotel →
    middle of the located places → city centre. */
 function optHotelCoords() {
@@ -1688,9 +1732,8 @@ async function optLocateAll() {
   opt.busy = false; renderOptReview();
 }
 
-/* Recommendations near the hotel. With a Google key: Places Nearby Search,
-   sorted by rating (so chips show real Google Maps ratings). Without: free
-   OpenStreetMap Overpass data, sorted by distance, no ratings. */
+/* Recommendations near the hotel. Try Google first when configured, but always
+   fall back to OpenStreetMap if the key is rejected or Google is unavailable. */
 async function gNearby(c, types) {
   const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
     method: "POST",
@@ -1717,20 +1760,15 @@ function mapNearby(places, breakfast, c) {
   out.sort((a, b) => (b.rating || 0) - (a.rating || 0) || a.d - b.d);
   return out.slice(0, 8);
 }
-async function optSuggest() {
-  if (opt.suggBusy) return;
-  opt.suggBusy = true; renderOptReview();
-  const c = optHotelCoords();
-  try {
-    if (GP_KEY) {
-      const bf = await gNearby(c, ["cafe", "bakery", "coffee_shop"]);
-      const rest = mapNearby(await gNearby(c, ["restaurant"]), false, c);
-      opt.sugg = { Breakfast: mapNearby(bf, true, c), Lunch: rest, Dinner: rest };
-    } else {
-      const around = r => `(around:${r},${c.lat.toFixed(5)},${c.lng.toFixed(5)})`;
-      const q = `[out:json][timeout:20];(nwr["amenity"="cafe"]["name"]${around(1500)};nwr["shop"="bakery"]["name"]${around(1500)};nwr["amenity"="restaurant"]["name"]${around(1500)};);out center 120;`;
-      const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q));
-      if (!r.ok) throw new Error("overpass " + r.status);
+async function osmNearby(c) {
+  const around = r => `(around:${r},${c.lat.toFixed(5)},${c.lng.toFixed(5)})`;
+  const q = `[out:json][timeout:20];(nwr["amenity"="cafe"]["name"]${around(1500)};nwr["shop"="bakery"]["name"]${around(1500)};nwr["amenity"="restaurant"]["name"]${around(1500)};);out center 120;`;
+  const endpoints = ["https://overpass-api.de/api/interpreter?data=", "https://overpass.kumi.systems/api/interpreter?data="];
+  let lastError = null;
+  for (const base of endpoints) {
+    try {
+      const r = await fetch(base + encodeURIComponent(q));
+      if (!r.ok) throw new Error("Overpass HTTP " + r.status);
       const j = await r.json();
       const seen = new Set();
       const items = (j.elements || []).map(el => {
@@ -1745,7 +1783,53 @@ async function optSuggest() {
         return { name, lat, lng, breakfast, d: optDist({ lat, lng }, c) };
       }).filter(Boolean).sort((a, b) => a.d - b.d);
       const rest = items.filter(x => !x.breakfast).slice(0, 8);
-      opt.sugg = { Breakfast: items.filter(x => x.breakfast).slice(0, 8), Lunch: rest, Dinner: rest };
+      return { Breakfast: items.filter(x => x.breakfast).slice(0, 8), Lunch: rest, Dinner: rest };
+    } catch (e) { lastError = e; }
+  }
+  // Public Overpass instances can be busy or rate-limited. Photon is also
+  // OpenStreetMap-backed and provides a useful final proximity-biased fallback.
+  try {
+    const find = async query => {
+      const u = "https://photon.komoot.io/api/?limit=20&lat=" + c.lat + "&lon=" + c.lng + "&q=" + encodeURIComponent(query);
+      const r = await fetch(u);
+      if (!r.ok) throw new Error("Photon HTTP " + r.status);
+      const j = await r.json();
+      const seen = new Set();
+      return (j.features || []).map(f => {
+        const p = f.properties || {}, xy = f.geometry && f.geometry.coordinates;
+        if (!p.name || !xy) return null;
+        const item = { name: p.name, lat: +xy[1], lng: +xy[0] };
+        item.d = optDist(item, c);
+        const key = item.name.toLowerCase();
+        if (item.d > 5 || seen.has(key)) return null;
+        seen.add(key); return item;
+      }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 8);
+    };
+    const breakfastHits = [...await find("cafe"), ...await find("bakery")];
+    const breakfastSeen = new Set();
+    const cafes = breakfastHits.filter(x => {
+      const key = x.name.toLowerCase();
+      if (breakfastSeen.has(key)) return false;
+      breakfastSeen.add(key); return true;
+    }).sort((a, b) => a.d - b.d).slice(0, 8);
+    const rest = await find("restaurant");
+    if (cafes.length || rest.length) return { Breakfast: cafes, Lunch: rest, Dinner: rest };
+  } catch (e) { lastError = e; }
+  throw lastError || new Error("OpenStreetMap recommendations unavailable");
+}
+async function optSuggest() {
+  if (opt.suggBusy) return;
+  opt.suggBusy = true; renderOptReview();
+  const c = optHotelCoords();
+  try {
+    if (GP_KEY) {
+      try {
+        const bf = await gNearby(c, ["cafe", "bakery", "coffee_shop"]);
+        const rest = mapNearby(await gNearby(c, ["restaurant"]), false, c);
+        opt.sugg = { Breakfast: mapNearby(bf, true, c), Lunch: rest, Dinner: rest };
+      } catch (e) { opt.sugg = await osmNearby(c); }
+    } else {
+      opt.sugg = await osmNearby(c);
     }
   } catch (e) { opt.sugg = "error"; }
   opt.suggBusy = false; renderOptReview();
@@ -2036,6 +2120,8 @@ function openOpt() {
   $("optDays").max = t.days.length;
   $("optHotelName").value = t.hotel ? (t.hotel.name || "") : "";
   $("optHotelLoc").value = "";
+  hsState = { results: null, busy: false, error: null };
+  renderHotelSearchResults();
   $("gpKey").value = GP_KEY;
   renderOptStarts();
   renderGImport();
