@@ -1,0 +1,2038 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"/>
+<meta name="theme-color" content="#f6f4ee"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Tripline"/>
+<title>Tripline · your trips, day by day</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --card: #ffffff;
+    --ink: #1c1c1c;
+    --muted: #6b6b6b;
+    --line: #e7e3d9;
+    --soft: #f2eee6;
+    --accent: #2f6feb;
+    --accent-soft: #eaf1ff;
+    --danger: #c0392b;
+    --good: #1a7f3c;
+    --good-soft: #e7f6ec;
+    --good-line: #b7e4c7;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 10px rgba(0,0,0,.04);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.4;
+    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+
+  /* ---------- Header ---------- */
+  header {
+    padding: 20px 18px 14px;
+    padding-top: calc(20px + env(safe-area-inset-top));
+    background: linear-gradient(180deg, #fffdf8, #f6f4ee);
+    border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+  h1 .em { font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .tripbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+  .countdown { background: var(--accent-soft); border: 1px solid #cfe0ff; color: #1b48b3; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .countdown.live { background: var(--good-soft); border-color: var(--good-line); color: var(--good); }
+  .countdown.done { background: var(--soft); border-color: var(--line); color: var(--muted); }
+
+  /* ---------- Home: trip cards ---------- */
+  .section-h { font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 20px 2px 8px; }
+  .trip-card {
+    display: flex; gap: 13px; align-items: center; width: 100%; text-align: left; font: inherit; color: inherit;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px; margin-bottom: 10px; cursor: pointer;
+  }
+  .trip-card.live { border-color: var(--good-line); box-shadow: 0 0 0 2px var(--good-soft), var(--shadow); }
+  .trip-emoji { font-size: 30px; flex: 0 0 auto; }
+  .trip-main { flex: 1; min-width: 0; }
+  .trip-name { font-weight: 750; font-size: 16px; letter-spacing: -0.01em; }
+  .trip-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .trip-stats { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .trip-chev { color: var(--muted); font-size: 20px; flex: 0 0 auto; }
+  .home-foot { display: flex; gap: 8px; justify-content: center; margin-top: 20px; }
+  .empty-home { text-align: center; color: var(--muted); padding: 36px 16px 10px; font-size: 14px; line-height: 1.5; }
+  .empty-home .big { font-size: 40px; margin-bottom: 8px; }
+
+  /* ---------- Recap ---------- */
+  .recap { margin-top: 12px; background: linear-gradient(135deg, #eef4ff, #fdf0f4); border: 1px solid #d9e4ff; border-radius: var(--radius); padding: 14px; }
+  .recap-h { font-weight: 800; font-size: 14px; }
+  .recap .sub { margin-top: 3px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 11px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; text-align: center; }
+  .stat .v { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .recap .btn { width: 100%; margin-top: 11px; }
+
+  /* ---------- Sticky toolbar ---------- */
+  .toolbar {
+    position: sticky; top: 0; z-index: 500;
+    background: rgba(246,244,238,.92);
+    backdrop-filter: saturate(1.4) blur(8px);
+    -webkit-backdrop-filter: saturate(1.4) blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tabs { display: flex; gap: 6px; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 4px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 1 0 auto; min-width: 62px; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-size: 13px; font-weight: 650; padding: 8px 8px; border-radius: 9px;
+    cursor: pointer; line-height: 1.15; text-align: center;
+  }
+  .tab small { display: block; font-weight: 500; font-size: 11px; opacity: .8; }
+  .tab.active { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+
+  .icon-btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    width: 40px; height: 40px; border-radius: 11px; font-size: 17px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  }
+  .icon-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ---------- Menu ---------- */
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: 46px; z-index: 600;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 6px; min-width: 210px;
+  }
+  .menu button {
+    display: flex; width: 100%; align-items: center; gap: 10px; border: 0; background: transparent;
+    font: inherit; font-size: 14px; padding: 10px 10px; border-radius: 8px; cursor: pointer; color: var(--ink); text-align: left;
+  }
+  .menu button:hover { background: var(--soft); }
+  .menu button.danger { color: var(--danger); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 2px; }
+
+  /* ---------- Day meta ---------- */
+  .content { padding: 14px 14px 40px; }
+  .day-meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .day-title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; margin-right: auto; }
+  .chip {
+    background: var(--soft); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; font-size: 12px; color: var(--muted); white-space: nowrap;
+  }
+  .chip b { color: var(--ink); font-weight: 650; }
+  .day-actions { display: flex; gap: 8px; width: 100%; margin-top: 2px; }
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 12px; border-radius: 11px;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    text-decoration: none;
+  }
+  .btn.wide { flex: 1; }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: var(--danger); }
+
+  /* ---------- Map ---------- */
+  #mapPanel { margin-bottom: 14px; }
+  #map { height: 340px; width: 100%; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--soft); }
+  .map-note { font-size: 12px; color: var(--muted); padding: 8px 4px 0; }
+  .hidden { display: none !important; }
+
+  /* ---------- Stop cards ---------- */
+  .stop {
+    position: relative;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 13px 14px;
+    display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start;
+  }
+  .badge {
+    width: 30px; height: 30px; border-radius: 9px; color: #fff; font-weight: 800; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+  .stop-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-right: 30px; }
+  .time { font-size: 13px; font-weight: 750; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .cat { font-size: 12px; font-weight: 650; }
+  .name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin-top: 1px; padding-right: 30px; }
+  .dur { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .note { font-size: 13.5px; color: #3a3a3a; margin-top: 6px; line-height: 1.42; }
+
+  .heart {
+    position: absolute; top: 9px; right: 9px; width: 36px; height: 36px; border: 0;
+    background: transparent; font-size: 20px; line-height: 1; cursor: pointer; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .heart:active { transform: scale(1.25); }
+
+  .card-links { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  .card-links .lbl { font-size: 12px; color: var(--muted); }
+  .mini { font-family: inherit; font-size: 12px; line-height: 1.3; cursor: pointer; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--soft); }
+  .mini:active { background: var(--line); }
+  .mini b { color: var(--ink); font-weight: 650; }
+  .mini.tt { background: #111; color: #fff; border-color: #111; }
+  .mini.tt b { color: #fff; }
+
+  .edit-row { display: flex; gap: 6px; margin-top: 10px; }
+  .edit-row .icon-btn { width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
+  .edit-row .spacer { flex: 1; }
+  .edit-row .del { color: var(--danger); border-color: #eecac4; }
+
+  /* ---------- Leg connector ---------- */
+  .leg {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 6px 9px 16px; position: relative;
+  }
+  .leg::before {
+    content: ""; position: absolute; left: 16px; top: -6px; bottom: -6px; width: 2px;
+    background: var(--line); border-radius: 2px;
+  }
+  .leg-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; padding-left: 12px; }
+  .leg-dist { font-size: 12.5px; color: var(--muted); }
+  .leg-dist.long { color: #a15c00; font-weight: 600; }
+  .leg-btns { display: flex; gap: 8px; margin-left: auto; }
+  .dir {
+    font-size: 12.5px; font-weight: 650; text-decoration: none; border-radius: 10px; padding: 9px 12px; min-height: 40px;
+    display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line);
+  }
+  .dir.g { background: var(--accent-soft); color: #1b48b3; border-color: #cfe0ff; }
+  .dir.a { background: #f0f0f2; color: #333; border-color: #e0e0e4; }
+  .leg-insert { text-align: center; padding: 2px 0 8px; }
+  .leg-insert button {
+    border: 1px dashed var(--line); background: transparent; color: var(--muted);
+    font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  }
+
+  .add-stop {
+    width: 100%; margin-top: 14px; border: 1px dashed var(--accent); color: var(--accent);
+    background: var(--accent-soft); font: inherit; font-size: 14px; font-weight: 650;
+    padding: 13px; border-radius: var(--radius); cursor: pointer;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 14px; }
+
+  /* ---------- Modal ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 1000; background: rgba(20,20,20,.4);
+    display: flex; align-items: flex-end; justify-content: center; padding: 0;
+  }
+  .modal-card {
+    background: var(--card); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height: 92vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(0,0,0,.2);
+  }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 14px; }
+  .modal-card h3 { margin: 0; font-size: 18px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field textarea {
+    width: 100%; font: inherit; font-size: 15px; padding: 11px 12px; border: 1px solid var(--line);
+    border-radius: 11px; background: #fff; color: var(--ink);
+  }
+  .field textarea { min-height: 66px; resize: vertical; }
+  .field input:focus, .field textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .loc-box { background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .loc-hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+  .link-btn { border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 0 0; }
+  .modal-btns { display: flex; align-items: center; gap: 10px; margin-top: 8px; position: sticky; bottom: 0; background: var(--card); padding: 12px 0 2px; }
+  .modal-btns .spacer { flex: 1; }
+  .modal-btns .btn { padding: 11px 16px; font-size: 14px; }
+  .sub { color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+  /* ---------- Now / running late ---------- */
+  .stop.now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow); }
+  .now-pill { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; }
+  .now-bar { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; background: var(--accent-soft); border: 1px solid #cfe0ff; color: #1b48b3; border-radius: 12px; padding: 9px 12px; font-size: 13px; margin-top: 2px; }
+  .now-bar .btn { padding: 7px 10px; font-size: 12.5px; margin-left: auto; }
+
+  /* ---------- Booked chip ---------- */
+  .booked { background: var(--good-soft); border: 1px solid var(--good-line); color: var(--good); border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+
+  /* ---------- Memory on card ---------- */
+  .memory { margin-top: 10px; display: flex; gap: 10px; align-items: flex-start; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+  .memory img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
+  .memory .mtxt { font-size: 13px; line-height: 1.4; }
+
+  /* ---------- Full-screen sheet ---------- */
+  .sheet { position: fixed; inset: 0; z-index: 1050; background: var(--bg); overflow-y: auto; }
+  .sheet-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 12px 14px; padding-top: calc(12px + env(safe-area-inset-top)); background: rgba(246,244,238,.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .sheet-body { padding: 16px; max-width: 780px; margin: 0 auto; }
+  .sheet-body .sub { margin: 0 0 14px; }
+  .sheet-body h4 { margin: 18px 0 10px; font-size: 15px; }
+  .stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+  .stamp { aspect-ratio: 1 / 1; border-radius: 14px; border: 1px dashed var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 10.5px; color: var(--muted); padding: 6px; line-height: 1.2; gap: 4px; }
+  .stamp.on { border-style: solid; border-color: #cfe0ff; background: var(--accent-soft); color: #1b48b3; font-weight: 700; }
+  .stamp .st-emoji { font-size: 22px; }
+  .journal { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .journal img { width: 84px; height: 84px; object-fit: cover; border-radius: 12px; flex: 0 0 auto; }
+  .journal .j-title { font-weight: 700; font-size: 14px; }
+  .journal .j-day { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .journal .j-memo { font-size: 13.5px; margin-top: 4px; line-height: 1.4; }
+  .bk-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .bk-check { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--good); font-weight: 800; cursor: pointer; font-size: 15px; }
+  .bk-check.on { background: var(--good-soft); border-color: var(--good-line); }
+  .bk-main { flex: 1; }
+  .bk-title { font-size: 13.5px; font-weight: 650; margin-bottom: 5px; }
+  .bk-conf { width: 100%; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; }
+
+  /* ---------- Route optimizer ---------- */
+  .opt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .opt-row { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .opt-status { width: 22px; text-align: center; flex: 0 0 auto; }
+  .opt-name { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .opt-name small { display: block; color: var(--muted); font-weight: 500; }
+  .opt-cat { border: 1px solid var(--line); background: var(--soft); font: inherit; font-size: 12px; font-weight: 650; border-radius: 999px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+  .opt-cat.meal { background: #fff0e6; border-color: #ffd0ad; color: #b45309; }
+  .opt-x { border: 0; background: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 6px; }
+  .opt-fix { width: 100%; margin: 6px 0 4px; font: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid #eecac4; border-radius: 9px; }
+  .opt-sug { border: 1px solid #cfe0ff; background: var(--accent-soft); color: #1b48b3; font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 7px 11px; cursor: pointer; margin: 0 6px 6px 0; }
+  .opt-sug:disabled { opacity: .4; cursor: default; }
+  .opt-sug-h { margin: 10px 0 6px; font-size: 13px; font-weight: 700; }
+  .opt-warn { background: #fff7da; border: 1px solid #f0db8c; color: #6b551a; border-radius: 10px; padding: 9px 11px; font-size: 13px; margin: 12px 0; line-height: 1.45; }
+  .opt-ok { background: var(--good-soft); border: 1px solid var(--good-line); color: var(--good); border-radius: 10px; padding: 9px 11px; font-size: 13px; margin: 12px 0; line-height: 1.45; }
+  .opt-day { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px; margin: 12px 0; }
+  .opt-day h4 { margin: 0 0 4px; font-size: 15px; }
+  .opt-day .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .opt-stop { display: flex; gap: 9px; font-size: 13.5px; padding: 5px 0; align-items: baseline; }
+  .opt-stop .t { font-variant-numeric: tabular-nums; font-weight: 700; flex: 0 0 44px; }
+  .opt-leg { color: var(--muted); font-size: 11.5px; padding-left: 53px; }
+
+  @media (min-width: 720px) {
+    #map { height: 420px; }
+    .modal { align-items: center; }
+    .modal-card { border-radius: 18px; }
+  }
+  @media print {
+    .toolbar, .day-actions, .edit-row, .leg-insert, .add-stop, .heart, #mapPanel, .home-foot { display: none !important; }
+    .stop, .leg { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= HOME: my trips ================= -->
+<div class="wrap" id="homeView">
+  <header>
+    <h1><span class="em">🧳</span> Tripline</h1>
+    <div class="subtitle">Every trip, day by day. Plan it with whoever you're going with, live it on the ground, then relive it as a recap.</div>
+    <div class="tripbar" id="lifeStats"></div>
+  </header>
+  <div class="content">
+    <div id="tripSections"></div>
+    <button class="add-stop" id="newTripBtn">＋ Plan a new trip</button>
+    <div class="home-foot">
+      <button class="mini" id="hExport">⤓ Backup all trips</button>
+      <button class="mini" id="hImport">⤒ Import backup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TRIP VIEW ================= -->
+<div class="wrap hidden" id="tripView">
+  <header>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="icon-btn" id="backBtn" aria-label="Back to my trips">←</button>
+      <h1 id="tripTitle" style="margin:0"></h1>
+    </div>
+    <div class="subtitle" id="tripSub" style="margin-top:7px"></div>
+    <div class="tripbar" id="tripBar"></div>
+    <div id="recapPanel"></div>
+  </header>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs"></div>
+    <button class="icon-btn" id="editBtn" title="Edit mode" aria-label="Toggle edit mode">✏️</button>
+    <div class="menu-wrap">
+      <button class="icon-btn" id="menuBtn" title="More" aria-label="More options">⋯</button>
+      <div class="menu hidden" id="menu">
+        <button id="mMemories">📸 &nbsp;Memories &amp; stamps</button>
+        <button id="mBookings">🎟 &nbsp;Bookings</button>
+        <button id="mOptimize">🧭 &nbsp;Route optimizer</button>
+        <button id="mEditTrip">🛠 &nbsp;Trip details &amp; dates</button>
+        <hr/>
+        <button id="mExport">⤓ &nbsp;Backup this trip</button>
+        <button id="mPrint">🖨 &nbsp;Print / save as PDF</button>
+        <hr/>
+        <button id="mDelete" class="danger">🗑 &nbsp;Delete this trip</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="mapPanel" class="hidden">
+      <div id="map"></div>
+      <div class="map-note">Lines are straight-line overviews. Tap a leg's <b>Google</b> or <b>Apple</b> button for real walking directions.</div>
+    </div>
+    <div class="day-meta" id="dayMeta"></div>
+    <div id="stopList"></div>
+    <button class="add-stop hidden" id="addStop">＋ Add a stop to this day</button>
+  </div>
+</div>
+
+<!-- Stop edit / add modal -->
+<div class="modal hidden" id="modal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="modalTitle">Edit stop</h3><button class="icon-btn" id="fClose" aria-label="Close">✕</button></div>
+    <div class="field"><label>Time</label><input id="f-time" placeholder="e.g. 14:00 or Late" autocomplete="off"/></div>
+    <div class="field"><label>Name</label><input id="f-title" placeholder="Place name" autocomplete="off"/></div>
+    <div class="field"><label>Category</label><input id="f-category" list="catlist" placeholder="Sight, Lunch, Museum…" autocomplete="off"/>
+      <datalist id="catlist">
+        <option>Hotel</option><option>Breakfast</option><option>Lunch</option><option>Dinner</option>
+        <option>Sight</option><option>Museum</option><option>Viewpoint</option><option>Walk / Rest</option>
+        <option>Neighborhood</option><option>Bar</option><option>Shopping</option><option>Beach</option>
+      </datalist>
+    </div>
+    <div class="field"><label>Duration</label><input id="f-duration" placeholder="e.g. 45–60 min" autocomplete="off"/></div>
+    <div class="field"><label>Note</label><textarea id="f-note" placeholder="Anything to remember"></textarea></div>
+
+    <div class="loc-box">
+      <div class="row2">
+        <div class="field" style="margin:0"><label>Latitude</label><input id="f-lat" type="text" inputmode="decimal" placeholder="48.8566"/></div>
+        <div class="field" style="margin:0"><label>Longitude</label><input id="f-lng" type="text" inputmode="decimal" placeholder="2.3522"/></div>
+      </div>
+      <div class="field" style="margin:12px 0 0"><label>Or paste a Maps link / "lat, lng"</label><input id="f-paste" placeholder="Paste from Google/Apple Maps" autocomplete="off"/></div>
+      <button class="link-btn" id="fUsePrev" type="button">Use the previous stop's location</button>
+      <div class="loc-hint">Tip: in Google Maps, share a place → the link contains the coordinates. Short <code>maps.app.goo.gl</code> links won't work — use the full link or paste "lat, lng".</div>
+    </div>
+
+    <div class="modal-btns">
+      <button class="btn ghost danger hidden" id="fDelete">Delete</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="fCancel">Cancel</button>
+      <button class="btn primary" id="fSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Trip create / edit modal -->
+<div class="modal hidden" id="tripModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="tripModalTitle">New trip</h3><button class="icon-btn" id="tClose" aria-label="Close">✕</button></div>
+    <div class="row2">
+      <div class="field"><label>Trip name</label><input id="t-name" placeholder="Paris" autocomplete="off"/></div>
+      <div class="field"><label>Emoji</label><input id="t-emoji" placeholder="🌍" autocomplete="off" maxlength="4"/></div>
+    </div>
+    <div class="field"><label>Destination city</label><input id="t-dest" placeholder="Paris" autocomplete="off"/></div>
+    <div class="row2">
+      <div class="field"><label>Start date</label><input id="t-start" type="date"/></div>
+      <div class="field"><label>End date</label><input id="t-end" type="date"/></div>
+    </div>
+    <div class="field"><label>Who's going? (optional, comma-separated)</label><input id="t-people" placeholder="Elif, Yiğit" autocomplete="off"/></div>
+    <div class="loc-box">
+      <div class="field" style="margin:0"><label>Home base / hotel (optional)</label><input id="t-hotelname" placeholder="Hotel name" autocomplete="off"/></div>
+      <div class="field" style="margin:10px 0 0"><label>Hotel location — Maps link or "lat, lng"</label><input id="t-hotelloc" placeholder="https://maps.google.com/…  or  48.8487, 2.3263" autocomplete="off"/></div>
+      <div class="loc-hint">The route optimizer starts and ends every day here. You can leave it blank and set it later.</div>
+    </div>
+    <div class="modal-btns">
+      <span class="spacer"></span>
+      <button class="btn ghost" id="tCancel">Cancel</button>
+      <button class="btn primary" id="tSave">Save trip</button>
+    </div>
+  </div>
+</div>
+
+<!-- Full-screen sheet: memories / bookings -->
+<div class="sheet hidden" id="sheet">
+  <div class="sheet-head">
+    <button class="icon-btn" id="sheetBack" aria-label="Back">←</button>
+    <h2 id="sheetTitle" style="font-size:18px;margin:0;letter-spacing:-.01em"></h2>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- Route optimizer sheet -->
+<div class="sheet hidden" id="optSheet">
+  <div class="sheet-head">
+    <button class="icon-btn" id="optBack" aria-label="Back">←</button>
+    <h2 style="font-size:18px;margin:0;letter-spacing:-.01em">Route optimizer 🧭</h2>
+  </div>
+  <div class="sheet-body">
+    <p class="sub">
+      Paste the places from your Google Maps list — <b>one per line</b>. A line can also include a full Maps link
+      or "lat, lng", and you can tag meals inline with <b>#breakfast</b> <b>#lunch</b> <b>#dinner</b> —
+      otherwise categories are guessed and you can tap to change them.
+    </p>
+    <div class="field"><label>Places — one per line</label>
+      <textarea id="optInput" style="min-height:150px" placeholder="Louvre Museum&#10;Sainte-Chapelle&#10;Wani #breakfast&#10;Bouillon Racine #lunch&#10;Brasserie des Prés #dinner"></textarea>
+    </div>
+    <div class="field"><label>City / destination — helps find the right places</label><input id="optCity" autocomplete="off"/></div>
+    <div class="opt-grid">
+      <div class="field"><label>Days</label><input id="optDays" type="number" min="1" inputmode="numeric"/></div>
+      <div class="field"><label>Each day starts at</label><input id="optStart" value="09:00" inputmode="numeric"/></div>
+    </div>
+    <div class="loc-box">
+      <div class="field" style="margin:0"><label>Hotel — every day starts &amp; ends here</label><input id="optHotelName"/></div>
+      <div class="field" style="margin:10px 0 0"><label>Hotel location — optional; the name is searched too</label><input id="optHotelLoc" placeholder="Maps link or 48.8487, 2.3263"/></div>
+    </div>
+    <button class="btn primary" id="optParse" style="width:100%">📍 Find these places</button>
+    <div id="optReview"></div>
+    <div id="optPlan"></div>
+  </div>
+</div>
+
+<!-- Memory editor (photo + note) -->
+<div class="modal hidden" id="memModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="memTitle">Memory</h3><button class="icon-btn" id="memClose" aria-label="Close">✕</button></div>
+    <div class="field"><label>Photo</label><input type="file" id="memPhoto" accept="image/*"/></div>
+    <div id="memPreviewWrap" class="hidden" style="margin-bottom:12px"><img id="memPreview" alt="" style="max-width:100%;border-radius:12px;display:block"/></div>
+    <div class="field"><label>A little note</label><textarea id="memNote" placeholder="What made this stop special?"></textarea></div>
+    <div class="modal-btns">
+      <button class="btn ghost danger hidden" id="memRemove">Remove</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="memCancel">Cancel</button>
+      <button class="btn primary" id="memSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept="application/json,.json" class="hidden"/>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ */
+/*  Small helpers                                                      */
+/* ------------------------------------------------------------------ */
+const $ = id => document.getElementById(id);
+let _idc = 0;
+function uid() { _idc += 1; return "s" + Date.now().toString(36) + (_idc) + Math.random().toString(36).slice(2, 5); }
+function s(time, title, category, duration, note, lat, lng) {
+  return { id: uid(), time, title, category, duration, note, lat, lng };
+}
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
+
+/* ---- dates: trips store ISO "YYYY-MM-DD"; days are derived from the range ---- */
+function parseISO(iso) { const p = String(iso || "").split("-").map(Number); return new Date(p[0], (p[1] || 1) - 1, p[2] || 1); }
+function isoStr(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function today0() { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+function fmtDay(iso) { return parseISO(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); }
+function fmtRange(t) {
+  const a = parseISO(t.start), b = parseISO(t.end);
+  const sameMonth = a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
+  const opts = { day: "numeric", month: "short" };
+  const left = sameMonth ? a.getDate() : a.toLocaleDateString("en-GB", opts);
+  return `${left}–${b.toLocaleDateString("en-GB", opts)} ${b.getFullYear()}`;
+}
+function tripStatus(t) {
+  const now = today0();
+  if (now < parseISO(t.start)) return "upcoming";
+  if (now > parseISO(t.end)) return "past";
+  return "active";
+}
+function daysUntilTrip(t) { return Math.round((parseISO(t.start) - today0()) / 86400000); }
+function withPeople(t) {
+  const p = t.participants || [];
+  if (!p.length) return "";
+  return " · with " + (p.length <= 2 ? p.join(" & ") : p.slice(0, -1).join(", ") + " & " + p[p.length - 1]);
+}
+/* Days are derived from start/end: keep stops for dates that stay in range. */
+function rebuildDays(trip) {
+  const wanted = [];
+  let d = parseISO(trip.start);
+  const end = parseISO(trip.end);
+  let guard = 0;
+  while (d <= end && guard++ < 60) { wanted.push(isoStr(d)); d = addDays(d, 1); }
+  const byDate = {};
+  trip.days.forEach(day => { byDate[day.date] = day; });
+  trip.days = wanted.map((date, i) => {
+    const kept = byDate[date];
+    if (kept) { kept.title = kept.title || "Day " + (i + 1); return kept; }
+    return { id: uid(), date, title: "Day " + (i + 1), stops: [] };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Seed trip: the original Paris plan                                 */
+/* ------------------------------------------------------------------ */
+function parisSeedDays() {
+  return [
+    {
+      id: uid(), date: "2026-07-15", title: "Classic Paris day",
+      stops: [
+        s("13:00", "Hôtel Aramis Saint-Germain", "Hotel", "Start", "Trip starts — 1pm earliest. Leave the hotel.", 48.8487, 2.3263),
+        s("13:15", "Homer Lobster / Odéon area", "Lunch", "45–60 min", "Quick lunch near the hotel before heading to the Île de la Cité.", 48.8529, 2.3383),
+        s("14:15", "Sainte-Chapelle", "Sight", "45 min", "Book this timed slot — the day is planned around it. The stained glass is the highlight.", 48.8554, 2.345),
+        s("15:10", "Notre-Dame Cathedral", "Sight", "40 min", "Exterior + a loop of the Île de la Cité; check for a same-day reservation.", 48.853, 2.3499),
+        s("16:00", "Louvre Museum", "Museum", "~2h30", "Open late tonight (Wed, until 21:45) so there's no closing rush — do a targeted greatest-hits route.", 48.8606, 2.3376),
+        s("18:40", "Tuileries Garden", "Walk / Rest", "30 min", "Golden-hour stroll west after the Louvre.", 48.8635, 2.327),
+        s("19:15", "Champs-Élysées / Arc de Triomphe", "Sight", "45 min", "Walk up to the Arc; shops only if they're on the way.", 48.8738, 2.295),
+        s("20:45", "Trocadéro", "Viewpoint", "30 min", "The best Eiffel view — get here just before the hour for the sparkle.", 48.8629, 2.2874),
+        s("21:20", "Eiffel Tower", "Sight", "~60 min", "Sunset ~21:50; the tower sparkles for 5 min on the hour after dark ✨", 48.8584, 2.2945),
+        s("22:30", "Le Son de la Terre", "Dinner", "90 min", "Metro back east. Dinner + Seine/Notre-Dame + music. Reserve and check the program.", 48.8521, 2.3487),
+        s("00:00", "Caveau de la Huchette", "Jazz bar", "Drinks / jazz", "Right by dinner; opens ~21:30 and runs late.", 48.8528, 2.3468),
+        s("Late", "Hôtel Aramis Saint-Germain", "Hotel", "End", "Short walk or a taxi home.", 48.8487, 2.3263)
+      ]
+    },
+    {
+      id: uid(), date: "2026-07-16", title: "Orsay + Montmartre day",
+      stops: [
+        s("09:00", "Hôtel Aramis Saint-Germain", "Hotel", "Start", "Leave the hotel.", 48.8487, 2.3263),
+        s("09:05", "Wani", "Breakfast", "35–40 min", "Modern coffee/brunch near the hotel. Alt: Les Deux Magots for the classic touristic breakfast.", 48.8493, 2.3244),
+        s("10:15", "Musée d’Orsay", "Museum", "2h15–2h30", "One of the strongest stops in the plan. Timed entry recommended.", 48.86, 2.3266),
+        s("12:45", "Hôtel des Invalides", "Sight", "30–45 min", "Short exterior stop unless you care about Napoleon/military history.", 48.8566, 2.3126),
+        s("13:30", "Le Relais de l’Entrecôte Saint-Germain", "Lunch", "75 min", "One steak-frites stop is enough. Lunch beats dinner for this.", 48.8542, 2.3339),
+        s("15:00", "Hôtel Aramis Saint-Germain — break", "Hotel", "45–60 min", "Reset before Montmartre and the final dinner.", 48.8487, 2.3263),
+        s("16:30", "Montmartre / Abbesses area", "Neighborhood", "60 min", "Metro/taxi from the hotel; don't walk this leg.", 48.884, 2.337),
+        s("17:30", "Sacré-Cœur", "Sight", "45–60 min", "Viewpoint + basilica + surrounding streets.", 48.8867, 2.3431),
+        s("19:15", "Hôtel Aramis Saint-Germain — refresh", "Hotel", "45–60 min", "Metro/taxi back. Change/rest before the final dinner.", 48.8487, 2.3263),
+        s("20:30", "Brasserie des Prés", "Dinner", "90 min", "Best final dinner option. Reserve.", 48.8534, 2.3391),
+        s("22:30+", "Prescription Cocktail Club", "Cocktail bar", "Drinks", "Keeps the night near Saint-Germain and the hotel.", 48.8545, 2.338),
+        s("Late", "Hôtel Aramis Saint-Germain", "Hotel", "End", "Walkable from Saint-Germain; take a ride if tired.", 48.8487, 2.3263)
+      ]
+    }
+  ];
+}
+function defaultParisTrip() {
+  return {
+    id: uid(), name: "Paris", destination: "Paris", emoji: "🗼",
+    start: "2026-07-15", end: "2026-07-16",
+    participants: ["Elif", "Yiğit"],
+    hotel: { name: "Hôtel Aramis Saint-Germain", lat: 48.8487, lng: 2.3263 },
+    days: parisSeedDays()
+  };
+}
+/* If this device already has the original Paris page's plan (same origin →
+   same localStorage), adopt it — edits, memories, bookings and all. */
+function migrateParis() {
+  try {
+    const raw = localStorage.getItem("paris-itinerary-v1");
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || !Array.isArray(p.days) || !p.days.length) return null;
+    const start = parseISO("2026-07-15");
+    return {
+      id: uid(), name: "Paris", destination: "Paris", emoji: "🗼",
+      start: "2026-07-15", end: isoStr(addDays(start, p.days.length - 1)),
+      participants: ["Elif", "Yiğit"],
+      hotel: { name: "Hôtel Aramis Saint-Germain", lat: 48.8487, lng: 2.3263 },
+      days: p.days.map((d, i) => ({
+        id: d.id || uid(), date: isoStr(addDays(start, i)),
+        title: d.title || "Day " + (i + 1), stops: d.stops || []
+      }))
+    };
+  } catch (e) { return null; }
+}
+
+/* ------------------------------------------------------------------ */
+/*  State + persistence                                                */
+/* ------------------------------------------------------------------ */
+const STORE_KEY = "tripline-v1";
+let store = load();
+let curTripId = null;   // null → home screen
+let activeDay = 0;
+let editing = false;
+let mapVisible = false;
+let nowStopIdx = null;
+
+function curTrip() { return store.trips.find(t => t.id === curTripId) || null; }
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.trips)) return parsed;
+    }
+  } catch (e) { /* fall through */ }
+  return { version: 1, trips: [migrateParis() || defaultParisTrip()] };
+}
+function save() {
+  let ok = true;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
+  catch (e) { console.warn("Could not save:", e); ok = false; }
+  return ok;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Geometry / itinerary helpers                                       */
+/* ------------------------------------------------------------------ */
+const CATS = [
+  { test: /hotel|home base/i,          emoji: "🏨", color: "#6b7280" },
+  { test: /breakfast|coffee|caf/i,     emoji: "🥐", color: "#d97706" },
+  { test: /lunch/i,                    emoji: "🍽️", color: "#ea580c" },
+  { test: /dinner|brasserie/i,         emoji: "🍷", color: "#b91c1c" },
+  { test: /museum|galler/i,            emoji: "🖼️", color: "#2563eb" },
+  { test: /viewpoint|lookout/i,        emoji: "📸", color: "#0891b2" },
+  { test: /walk|rest|garden|park/i,    emoji: "🌳", color: "#16a34a" },
+  { test: /beach/i,                    emoji: "🏖️", color: "#0d9488" },
+  { test: /neighbou?rhood/i,           emoji: "🏘️", color: "#ca8a04" },
+  { test: /jazz|bar|cocktail|club/i,   emoji: "🍸", color: "#db2777" },
+  { test: /shop/i,                     emoji: "🛍️", color: "#9333ea" },
+  { test: /sight|church|temple|castle/i, emoji: "⛪", color: "#7c3aed" }
+];
+function catStyle(cat) {
+  const c = String(cat || "");
+  for (const k of CATS) if (k.test.test(c)) return k;
+  return { emoji: "📍", color: "#555" };
+}
+
+/* Distance between two stops. Straight-line * 1.3 road factor; ~5 km/h. */
+function haversine(a, b) {
+  const R = 6371, toR = x => x * Math.PI / 180;
+  const dLat = toR(b.lat - a.lat), dLng = toR(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function legInfo(a, b) {
+  if (a.lat == null || b.lat == null) return { km: 0, min: 0, long: false, ok: false };
+  const km = haversine(a, b) * 1.3;
+  const min = Math.max(1, Math.round(km * 12.4));
+  return { km, min, long: km > 2.5, ok: true };
+}
+
+function parseMin(t) {
+  const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+function fmtMin(mins) {
+  mins = ((mins % 1440) + 1440) % 1440;
+  return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
+}
+/* Index of the stop you should be at right now — only on that day's actual date. */
+function nowStopFor(stops, dateIso) {
+  const now = new Date();
+  if (isoStr(now) !== dateIso) return null;
+  const cur = now.getHours() * 60 + now.getMinutes();
+  let idx = null;
+  for (let i = 0; i < stops.length; i++) {
+    const t = parseMin(stops[i].time);
+    if (t != null && t <= cur) idx = i;
+  }
+  return idx;
+}
+/* Push every timed stop from fromIndex onward by delta minutes (keeps suffixes). */
+function shiftTimes(stops, fromIndex, delta) {
+  for (let i = fromIndex; i < stops.length; i++) {
+    const mt = String(stops[i].time || "").match(/^(\d{1,2}):(\d{2})(.*)$/);
+    if (!mt) continue;
+    stops[i].time = fmtMin((+mt[1]) * 60 + (+mt[2]) + delta) + (mt[3] || "");
+  }
+}
+
+/* Strip descriptive suffixes ("— break", "/ Odéon area") so searches hit the real place. */
+function searchName(t) { return String(t || "").split(/\s+[—/]\s+/)[0].trim(); }
+
+/* Maps deep links. Directions use coordinates; "open place" uses the name. */
+function gDir(a, b) { return `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=walking`; }
+function aDir(a, b) { return `https://maps.apple.com/?saddr=${a.lat},${a.lng}&daddr=${b.lat},${b.lng}&dirflg=w`; }
+function gPlace(p, city) { return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchName(p.title) + (city ? " " + city : ""))}`; }
+function aPlace(p) {
+  const base = `https://maps.apple.com/?q=${encodeURIComponent(searchName(p.title))}`;
+  return p.lat != null ? `${base}&sll=${p.lat},${p.lng}` : base;
+}
+function openTikTok(query) {
+  const web = "https://www.tiktok.com/search?q=" + encodeURIComponent(query);
+  const ua = navigator.userAgent || "";
+  const isAndroid = /Android/i.test(ua);
+  const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  if (!isAndroid && !isIOS) { window.open(web, "_blank"); return; }
+  const app = "snssdk1233://search?keyword=" + encodeURIComponent(query);
+  let done = false;
+  const timer = setTimeout(() => { if (!done) { done = true; window.location.href = web; } }, 1100);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { done = true; clearTimeout(timer); } }, { once: true });
+  window.addEventListener("pagehide", () => { done = true; clearTimeout(timer); }, { once: true });
+  window.location.href = app;
+}
+function gDayRoute(stops) {
+  const pts = stops.filter(x => x.lat != null).map(x => `${x.lat},${x.lng}`);
+  if (pts.length < 2) return null;
+  return "https://www.google.com/maps/dir/" + pts.join("/") + "/data=!4m2!4m1!3e2";
+}
+function parseCoords(text) {
+  if (!text) return null;
+  const t = text.trim();
+  let m = t.match(/@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  m = t.match(/!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  m = t.match(/[?&#](?:q|ll|query|daddr|sll|center)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/i);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  m = t.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Trip stats (the Strava part)                                       */
+/* ------------------------------------------------------------------ */
+function tripStats(t) {
+  let stops = 0, km = 0, visited = 0, photos = 0, notes = 0;
+  t.days.forEach(d => {
+    stops += d.stops.length;
+    d.stops.forEach(st => {
+      if (st.snapped) visited++;
+      if (st.photo) photos++;
+      if (st.memo) notes++;
+    });
+    for (let i = 0; i < d.stops.length - 1; i++) {
+      const l = legInfo(d.stops[i], d.stops[i + 1]);
+      if (l.ok && !l.long) km += l.km;
+    }
+  });
+  return { days: t.days.length, stops, km, visited, photos, notes };
+}
+function statusChip(t) {
+  const st = tripStatus(t);
+  if (st === "active") return `<span class="countdown live">● Happening now</span>`;
+  if (st === "past") return `<span class="countdown done">✓ Completed</span>`;
+  const d = daysUntilTrip(t);
+  return `<span class="countdown">${d === 1 ? "Tomorrow" : d + " days to go"} ✨</span>`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rendering: home                                                    */
+/* ------------------------------------------------------------------ */
+function tripCard(t) {
+  const st = tripStatus(t);
+  const days = t.days.length;
+  let extra = "";
+  if (st === "past") {
+    const x = tripStats(t);
+    extra = `<div class="trip-stats">
+      <span class="chip">🚶 <b>${x.km.toFixed(1)} km</b></span>
+      <span class="chip"><b>${x.stops}</b> stops</span>
+      ${x.visited ? `<span class="chip">❤️ <b>${x.visited}</b></span>` : ""}
+      ${x.photos ? `<span class="chip">📷 <b>${x.photos}</b></span>` : ""}
+    </div>`;
+  } else {
+    extra = `<div class="trip-stats">${statusChip(t)}</div>`;
+  }
+  return `<button class="trip-card ${st === "active" ? "live" : ""}" data-trip="${t.id}">
+    <div class="trip-emoji">${esc(t.emoji || "🌍")}</div>
+    <div class="trip-main">
+      <div class="trip-name">${esc(t.name)}</div>
+      <div class="trip-sub">${fmtRange(t)} · ${days} day${days > 1 ? "s" : ""}${esc(withPeople(t))}</div>
+      ${extra}
+    </div>
+    <div class="trip-chev">›</div>
+  </button>`;
+}
+
+function renderHome() {
+  const trips = store.trips.slice();
+  const active = trips.filter(t => tripStatus(t) === "active");
+  const upcoming = trips.filter(t => tripStatus(t) === "upcoming").sort((a, b) => a.start < b.start ? -1 : 1);
+  const past = trips.filter(t => tripStatus(t) === "past").sort((a, b) => a.end > b.end ? -1 : 1);
+
+  let totalKm = 0, totalStops = 0, totalDays = 0;
+  trips.forEach(t => { const x = tripStats(t); totalKm += x.km; totalStops += x.stops; totalDays += x.days; });
+  $("lifeStats").innerHTML = trips.length
+    ? `<span class="chip">🧳 <b>${trips.length}</b> trip${trips.length > 1 ? "s" : ""}</span>
+       <span class="chip">📅 <b>${totalDays}</b> days</span>
+       <span class="chip">📍 <b>${totalStops}</b> stops</span>
+       <span class="chip">🚶 <b>${totalKm.toFixed(0)} km</b></span>`
+    : "";
+
+  let html = "";
+  if (!trips.length) {
+    html = `<div class="empty-home"><div class="big">🗺️</div>Nowhere on the books yet.<br/>Plan your first trip — solo, together, whoever's coming.</div>`;
+  } else {
+    if (active.length) { html += `<div class="section-h">Happening now</div>` + active.map(tripCard).join(""); }
+    if (upcoming.length) { html += `<div class="section-h">Up next</div>` + upcoming.map(tripCard).join(""); }
+    if (past.length) { html += `<div class="section-h">The books 🏁</div>` + past.map(tripCard).join(""); }
+  }
+  $("tripSections").innerHTML = html;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rendering: trip view                                               */
+/* ------------------------------------------------------------------ */
+function renderTripHeader() {
+  const t = curTrip();
+  $("tripTitle").innerHTML = `<span class="em">${esc(t.emoji || "🌍")}</span> ${esc(t.name)}`;
+  $("tripSub").textContent = `${t.destination}${t.destination === t.name ? "" : ""} · ${fmtRange(t)}${withPeople(t)}` +
+    (t.hotel && t.hotel.name ? ` · ${t.hotel.name}` : "");
+  $("tripBar").innerHTML = statusChip(t);
+  const past = tripStatus(t) === "past";
+  $("recapPanel").innerHTML = past ? recapHTML(t) : "";
+}
+function recapHTML(t) {
+  const x = tripStats(t);
+  return `<div class="recap">
+    <div class="recap-h">🏁 Trip recap</div>
+    <div class="sub">The trip's on the books — here's how it went.</div>
+    <div class="stat-grid">
+      <div class="stat"><div class="v">${x.days}</div><div class="l">days</div></div>
+      <div class="stat"><div class="v">${x.stops}</div><div class="l">stops</div></div>
+      <div class="stat"><div class="v">${x.km.toFixed(1)}</div><div class="l">km walked</div></div>
+      <div class="stat"><div class="v">${x.visited}</div><div class="l">places loved</div></div>
+      <div class="stat"><div class="v">${x.photos}</div><div class="l">photos</div></div>
+      <div class="stat"><div class="v">${x.notes}</div><div class="l">memories</div></div>
+    </div>
+    <button class="btn primary" id="shareRecap">📤 Share recap card</button>
+  </div>`;
+}
+
+function renderTabs() {
+  const t = curTrip();
+  $("tabs").innerHTML = t.days.map((d, i) =>
+    `<button class="tab ${i === activeDay ? "active" : ""}" data-day="${i}">Day ${i + 1}<small>${esc(fmtDay(d.date))}</small></button>`
+  ).join("");
+}
+
+function renderDayMeta() {
+  const t = curTrip();
+  const day = t.days[activeDay];
+  const stops = day.stops;
+  let walkKm = 0, walkMin = 0;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const l = legInfo(stops[i], stops[i + 1]);
+    if (l.ok && !l.long) { walkKm += l.km; walkMin += l.min; }
+  }
+  const routeUrl = gDayRoute(stops);
+  nowStopIdx = nowStopFor(stops, day.date);
+  $("dayMeta").innerHTML =
+    `<div class="day-title">${esc(day.title)}</div>` +
+    `<span class="chip"><b>${stops.length}</b> stops</span>` +
+    `<span class="chip">🚶 <b>${walkKm.toFixed(1)} km</b> · ${walkMin} min</span>` +
+    `<div class="day-actions">` +
+      `<button class="btn wide" id="toggleMap">${mapVisible ? "🗺️ Hide map" : "🗺️ Show map"}</button>` +
+      (routeUrl ? `<a class="btn wide" href="${routeUrl}" target="_blank" rel="noopener">↗ Whole day in Google Maps</a>` : "") +
+    `</div>` +
+    (nowStopIdx != null
+      ? `<div class="now-bar">● Around <b>&nbsp;stop ${nowStopIdx + 1}&nbsp;</b> right now<button class="btn" id="shiftBtn">🕐 Running late? +30 min</button></div>`
+      : "");
+}
+
+function stopCard(stop, index, day) {
+  const t = curTrip();
+  const cs = catStyle(stop.category);
+  const venueLinks = `<div class="card-links">
+         <span class="lbl">See it:</span>
+         <a class="mini" href="${gPlace(stop, t.destination)}" target="_blank" rel="noopener">🔎 <b>Google</b></a>
+         <a class="mini" href="${aPlace(stop)}" target="_blank" rel="noopener"><b>Apple</b></a>
+         <button class="mini tt" type="button" data-act="tiktok" data-i="${index}">▶ <b>TikTok</b></button>
+       </div>`;
+  const memBlock = (stop.photo || stop.memo)
+    ? `<div class="memory">${stop.photo ? `<img src="${stop.photo}" alt="">` : ""}<div class="mtxt">${stop.memo ? esc(stop.memo) : ""}<div style="margin-top:6px"><button class="mini" type="button" data-act="mem" data-i="${index}">✏️ Edit memory</button></div></div></div>`
+    : `<div style="margin-top:10px"><button class="mini" type="button" data-act="mem" data-i="${index}">📷 Add a memory</button></div>`;
+  const editRow = editing
+    ? `<div class="edit-row">
+         <button class="icon-btn" data-act="up" data-i="${index}" ${index === 0 ? "disabled style=opacity:.35" : ""}>↑</button>
+         <button class="icon-btn" data-act="down" data-i="${index}" ${index === day.stops.length - 1 ? "disabled style=opacity:.35" : ""}>↓</button>
+         <button class="icon-btn" data-act="edit" data-i="${index}">✏️</button>
+         <span class="spacer"></span>
+         <button class="icon-btn del" data-act="del" data-i="${index}">🗑</button>
+       </div>` : "";
+  return `<div class="stop ${index === nowStopIdx ? "now" : ""}">
+    <div class="badge" style="background:${cs.color}">${index + 1}</div>
+    <div>
+      <div class="stop-head">
+        <span class="time">${esc(stop.time)}</span>
+        <span class="cat" style="color:${cs.color}">${cs.emoji} ${esc(stop.category)}</span>
+        ${index === nowStopIdx ? `<span class="now-pill">● NOW</span>` : ""}
+        ${stop.booked ? `<span class="booked">✓ Booked</span>` : ""}
+      </div>
+      <div class="name">${esc(stop.title)}</div>
+      ${stop.duration ? `<div class="dur">${esc(stop.duration)}</div>` : ""}
+      ${stop.note ? `<div class="note">${esc(stop.note)}</div>` : ""}
+      ${venueLinks}
+      ${memBlock}
+      ${editRow}
+    </div>
+    <button class="heart" data-act="heart" data-i="${index}" aria-label="Mark visited">${stop.snapped ? "❤️" : "🤍"}</button>
+  </div>`;
+}
+
+function legConnector(a, b) {
+  const l = legInfo(a, b);
+  if (!l.ok) return `<div class="leg"><div class="leg-info"><span class="leg-dist">Set a location on both stops to see the walk</span></div></div>`;
+  const label = l.long
+    ? `<span class="leg-dist long">🚕 ${l.km.toFixed(1)} km · metro/taxi faster (${l.min} min walk)</span>`
+    : `<span class="leg-dist">🚶 ${l.km.toFixed(1)} km · ${l.min} min walk</span>`;
+  return `<div class="leg">
+    <div class="leg-info">
+      ${label}
+      <span class="leg-btns">
+        <a class="dir g" href="${gDir(a, b)}" target="_blank" rel="noopener">🚶 Google</a>
+        <a class="dir a" href="${aDir(a, b)}" target="_blank" rel="noopener">Apple</a>
+      </span>
+    </div>
+  </div>`;
+}
+
+function renderStops() {
+  const day = curTrip().days[activeDay];
+  const list = $("stopList");
+  if (!day.stops.length) {
+    list.innerHTML = `<div class="empty">No stops yet. Tap ✏️ then “Add a stop”, or use the 🧭 route optimizer in the ⋯ menu.</div>`;
+  } else {
+    let html = "";
+    day.stops.forEach((stop, i) => {
+      html += stopCard(stop, i, day);
+      if (i < day.stops.length - 1) {
+        html += legConnector(stop, day.stops[i + 1]);
+        if (editing) html += `<div class="leg-insert"><button data-act="insert" data-i="${i + 1}">＋ insert stop here</button></div>`;
+      }
+    });
+    list.innerHTML = html;
+  }
+  $("addStop").classList.toggle("hidden", !editing);
+}
+
+function render() {
+  const t = curTrip();
+  $("homeView").classList.toggle("hidden", !!t);
+  $("tripView").classList.toggle("hidden", !t);
+  if (!t) { renderHome(); return; }
+  if (activeDay >= t.days.length) activeDay = 0;
+  renderTripHeader();
+  renderTabs();
+  renderDayMeta();
+  renderStops();
+  $("editBtn").classList.toggle("on", editing);
+  if (mapVisible) renderMap();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Map (Leaflet, lazy)                                                */
+/* ------------------------------------------------------------------ */
+let map = null, mapLayer = null;
+function ensureMap() {
+  if (map || typeof L === "undefined") return map;
+  map = L.map("map", { scrollWheelZoom: false }).setView([48.857, 2.3455], 13);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap"
+  }).addTo(map);
+  mapLayer = L.layerGroup().addTo(map);
+  return map;
+}
+function renderMap() {
+  if (!ensureMap()) {
+    $("map").innerHTML = "<div style='padding:20px;color:#888;font-size:13px'>Map couldn't load (no connection). The list and directions buttons still work.</div>";
+    return;
+  }
+  mapLayer.clearLayers();
+  const day = curTrip().days[activeDay];
+  const pts = [];
+  day.stops.forEach((st, i) => {
+    if (st.lat == null) return;
+    pts.push([st.lat, st.lng]);
+    L.marker([st.lat, st.lng])
+      .bindTooltip(String(i + 1), { permanent: true, direction: "center", className: "" })
+      .bindPopup(`<b>${i + 1} · ${esc(st.title)}</b><br>${esc(st.time)} · ${esc(st.category)}`)
+      .addTo(mapLayer);
+  });
+  if (pts.length > 1) L.polyline(pts, { weight: 4, opacity: .6, color: "#2f6feb" }).addTo(mapLayer);
+  if (pts.length) map.fitBounds(pts, { padding: [34, 34] });
+  setTimeout(() => map.invalidateSize(), 60);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Stop modal (add / edit)                                            */
+/* ------------------------------------------------------------------ */
+let modalCtx = null; // { dayIndex, stopIndex|null, insertAt|null }
+
+function openModal(stopIndex, insertAt) {
+  const day = curTrip().days[activeDay];
+  modalCtx = { dayIndex: activeDay, stopIndex: stopIndex == null ? null : stopIndex, insertAt: insertAt == null ? null : insertAt };
+  const isNew = stopIndex == null;
+  const st = isNew ? null : day.stops[stopIndex];
+  $("modalTitle").textContent = isNew ? "Add stop" : "Edit stop";
+  const g = (o, k) => (o && o[k] != null ? o[k] : "");
+  $("f-time").value = g(st, "time");
+  $("f-title").value = g(st, "title");
+  $("f-category").value = g(st, "category");
+  $("f-duration").value = g(st, "duration");
+  $("f-note").value = g(st, "note");
+  $("f-lat").value = st && st.lat != null ? st.lat : "";
+  $("f-lng").value = st && st.lng != null ? st.lng : "";
+  $("f-paste").value = "";
+  $("f-paste").style.borderColor = "";
+  $("fDelete").classList.toggle("hidden", isNew);
+  $("modal").classList.remove("hidden");
+  fitModal($("modal"));
+  if (window.matchMedia("(min-width: 720px)").matches) $("f-title").focus();
+}
+function closeModal() {
+  const m = $("modal");
+  m.classList.add("hidden");
+  m.style.height = ""; m.style.top = ""; m.style.bottom = "";
+  modalCtx = null;
+}
+
+/* Keep bottom-sheets within the visible viewport when the mobile keyboard opens. */
+function fitModal(m) {
+  if (!m || m.classList.contains("hidden")) return;
+  const vv = window.visualViewport;
+  if (!vv) return;
+  m.style.height = vv.height + "px";
+  m.style.top = vv.offsetTop + "px";
+  m.style.bottom = "auto";
+}
+if (window.visualViewport) {
+  const refit = () => { fitModal($("modal")); fitModal($("tripModal")); };
+  window.visualViewport.addEventListener("resize", refit);
+  window.visualViewport.addEventListener("scroll", refit);
+}
+
+function saveModal() {
+  const day = curTrip().days[modalCtx.dayIndex];
+  const title = $("f-title").value.trim();
+  if (!title) { $("f-title").focus(); return; }
+  const lat = num($("f-lat").value), lng = num($("f-lng").value);
+  const rec = {
+    time: $("f-time").value.trim() || "—",
+    title,
+    category: $("f-category").value.trim() || "Stop",
+    duration: $("f-duration").value.trim(),
+    note: $("f-note").value.trim(),
+    lat: lat, lng: lng
+  };
+  if (modalCtx.stopIndex != null) {
+    const old = day.stops[modalCtx.stopIndex];
+    rec.id = old.id;
+    ["snapped", "booked", "confirm", "photo", "memo"].forEach(k => { if (old[k] != null) rec[k] = old[k]; });
+    day.stops[modalCtx.stopIndex] = rec;
+  } else {
+    rec.id = uid();
+    const at = modalCtx.insertAt != null ? modalCtx.insertAt : day.stops.length;
+    day.stops.splice(at, 0, rec);
+  }
+  save(); closeModal(); render();
+}
+
+function deleteStop() {
+  const day = curTrip().days[modalCtx.dayIndex];
+  if (modalCtx.stopIndex != null) {
+    if (!confirm("Delete this stop?")) return;
+    day.stops.splice(modalCtx.stopIndex, 1);
+    save(); closeModal(); render();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Trip modal (create / edit trip)                                    */
+/* ------------------------------------------------------------------ */
+let tripModalId = null; // null → creating
+
+function openTripModal(tripId) {
+  tripModalId = tripId || null;
+  const t = tripId ? store.trips.find(x => x.id === tripId) : null;
+  $("tripModalTitle").textContent = t ? "Trip details" : "New trip";
+  $("t-name").value = t ? t.name : "";
+  $("t-emoji").value = t ? (t.emoji || "") : "";
+  $("t-dest").value = t ? t.destination : "";
+  $("t-start").value = t ? t.start : "";
+  $("t-end").value = t ? t.end : "";
+  $("t-people").value = t ? (t.participants || []).join(", ") : "";
+  $("t-hotelname").value = t && t.hotel ? (t.hotel.name || "") : "";
+  $("t-hotelloc").value = t && t.hotel && t.hotel.lat != null ? `${t.hotel.lat}, ${t.hotel.lng}` : "";
+  $("tripModal").classList.remove("hidden");
+  fitModal($("tripModal"));
+}
+function closeTripModal() {
+  const m = $("tripModal");
+  m.classList.add("hidden");
+  m.style.height = ""; m.style.top = ""; m.style.bottom = "";
+  tripModalId = null;
+}
+function saveTripModal() {
+  const dest = $("t-dest").value.trim();
+  const name = $("t-name").value.trim() || dest;
+  const start = $("t-start").value, end = $("t-end").value;
+  if (!name) { $("t-name").focus(); return; }
+  if (!start || !end) { alert("Pick a start and end date."); return; }
+  if (end < start) { alert("The end date is before the start date."); return; }
+  const span = Math.round((parseISO(end) - parseISO(start)) / 86400000) + 1;
+  if (span > 60) { alert("That's over 60 days — split it into more than one trip."); return; }
+  const people = $("t-people").value.split(",").map(x => x.trim()).filter(Boolean);
+  const hotelName = $("t-hotelname").value.trim();
+  const hotelLoc = parseCoords($("t-hotelloc").value.trim());
+  const hotel = (hotelName || hotelLoc) ? Object.assign({ name: hotelName }, hotelLoc || {}) : null;
+
+  if (tripModalId) {
+    const t = store.trips.find(x => x.id === tripModalId);
+    if (!t) { closeTripModal(); return; }
+    const rangeChanged = t.start !== start || t.end !== end;
+    if (rangeChanged) {
+      const keep = new Set();
+      let d = parseISO(start); const e = parseISO(end); let guard = 0;
+      while (d <= e && guard++ < 60) { keep.add(isoStr(d)); d = addDays(d, 1); }
+      const losing = t.days.filter(day => !keep.has(day.date) && day.stops.length).length;
+      if (losing && !confirm(`Changing the dates drops ${losing} planned day${losing > 1 ? "s" : ""} outside the new range. Continue?`)) return;
+    }
+    t.name = name; t.destination = dest || name; t.emoji = $("t-emoji").value.trim() || t.emoji || "🌍";
+    t.start = start; t.end = end; t.participants = people; t.hotel = hotel;
+    if (rangeChanged) rebuildDays(t);
+  } else {
+    const t = {
+      id: uid(), name, destination: dest || name,
+      emoji: $("t-emoji").value.trim() || "🌍",
+      start, end, participants: people, hotel, days: []
+    };
+    rebuildDays(t);
+    store.trips.push(t);
+    curTripId = t.id; activeDay = 0; editing = false;
+  }
+  save(); closeTripModal(); render();
+}
+function deleteTrip() {
+  const t = curTrip(); if (!t) return;
+  if (!confirm(`Delete “${t.name}” and everything in it? This can't be undone.`)) return;
+  store.trips = store.trips.filter(x => x.id !== t.id);
+  curTripId = null; save(); render();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Memories (photo + note)                                            */
+/* ------------------------------------------------------------------ */
+function readImage(file, cb) {
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 720; let w = img.width, h = img.height;
+      if (w > h && w > max) { h = Math.round(h * max / w); w = max; }
+      else if (h > max) { w = Math.round(w * max / h); h = max; }
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      try { cb(c.toDataURL("image/jpeg", 0.7)); } catch (e) { cb(null); }
+    };
+    img.onerror = () => cb(null);
+    img.src = r.result;
+  };
+  r.onerror = () => cb(null);
+  r.readAsDataURL(file);
+}
+let memCtx = null, memPhoto;
+function openMem(dayIndex, stopIndex) {
+  memCtx = { dayIndex, stopIndex };
+  const st = curTrip().days[dayIndex].stops[stopIndex];
+  memPhoto = undefined; // undefined = keep as-is, null = remove, string = new
+  $("memTitle").textContent = "Memory · " + st.title;
+  $("memPhoto").value = "";
+  $("memNote").value = st.memo || "";
+  if (st.photo) { $("memPreview").src = st.photo; $("memPreviewWrap").classList.remove("hidden"); }
+  else { $("memPreview").removeAttribute("src"); $("memPreviewWrap").classList.add("hidden"); }
+  $("memRemove").classList.toggle("hidden", !(st.photo || st.memo));
+  $("memModal").classList.remove("hidden");
+}
+function closeMem() { $("memModal").classList.add("hidden"); memCtx = null; }
+function saveMem() {
+  const st = curTrip().days[memCtx.dayIndex].stops[memCtx.stopIndex];
+  const prevPhoto = st.photo;
+  if (memPhoto !== undefined) { if (memPhoto) st.photo = memPhoto; else delete st.photo; }
+  const note = $("memNote").value.trim();
+  if (note) st.memo = note; else delete st.memo;
+  if (!save()) {
+    if (prevPhoto) st.photo = prevPhoto; else delete st.photo;
+    save();
+    alert("This page's storage is full — try a smaller photo or remove a few.");
+    return;
+  }
+  closeMem(); render();
+}
+function removeMem() {
+  const st = curTrip().days[memCtx.dayIndex].stops[memCtx.stopIndex];
+  delete st.photo; delete st.memo; save(); closeMem(); render();
+}
+$("memPhoto").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  readImage(f, d => {
+    if (!d) { alert("Couldn't read that image."); return; }
+    memPhoto = d; $("memPreview").src = d; $("memPreviewWrap").classList.remove("hidden");
+  });
+});
+$("memSave").addEventListener("click", saveMem);
+$("memCancel").addEventListener("click", closeMem);
+$("memClose").addEventListener("click", closeMem);
+$("memRemove").addEventListener("click", removeMem);
+$("memModal").addEventListener("click", e => { if (e.target.id === "memModal") closeMem(); });
+
+/* ------------------------------------------------------------------ */
+/*  Full-screen sheets: memories / bookings                            */
+/* ------------------------------------------------------------------ */
+function openSheet(title, html) { $("sheetTitle").textContent = title; $("sheetBody").innerHTML = html; $("sheet").classList.remove("hidden"); $("sheet").scrollTop = 0; }
+function closeSheet() { $("sheet").classList.add("hidden"); }
+
+function openMemories() {
+  const t = curTrip();
+  const all = [];
+  t.days.forEach((d, di) => d.stops.forEach(st => all.push({ st, date: d.date, di })));
+  const collected = all.filter(x => x.st.snapped).length;
+  let html = `<p class="sub">Tap the ♡ on any stop to collect its stamp. <b>${collected}/${all.length}</b> collected.</p><div class="stamps">`;
+  all.forEach(x => {
+    const cs = catStyle(x.st.category);
+    html += `<div class="stamp ${x.st.snapped ? "on" : ""}"><div class="st-emoji">${x.st.snapped ? cs.emoji : "▫️"}</div><div>${esc(searchName(x.st.title))}</div></div>`;
+  });
+  html += `</div><h4>Photo journal</h4>`;
+  const mems = all.filter(x => x.st.photo || x.st.memo);
+  if (!mems.length) html += `<p class="sub">No memories yet — on any stop tap “📷 Add a memory”.</p>`;
+  mems.forEach(x => {
+    html += `<div class="journal">${x.st.photo ? `<img src="${x.st.photo}" alt="">` : ""}<div><div class="j-title">${esc(x.st.title)} <span class="j-day">· ${esc(fmtDay(x.date))}</span></div>${x.st.memo ? `<div class="j-memo">${esc(x.st.memo)}</div>` : ""}</div></div>`;
+  });
+  openSheet("Memories & stamps 📸", html);
+}
+
+function openBookings() {
+  const t = curTrip();
+  let html = `<p class="sub">Tap the box when booked, and paste a confirmation link or number.</p>`;
+  t.days.forEach((day, di) => {
+    html += `<h4>Day ${di + 1} · ${esc(fmtDay(day.date))}</h4>`;
+    if (!day.stops.length) html += `<p class="sub">Nothing planned yet.</p>`;
+    day.stops.forEach((st, si) => {
+      html += `<div class="bk-row">
+        <button class="bk-check ${st.booked ? "on" : ""}" data-bk="${di}:${si}">${st.booked ? "✓" : ""}</button>
+        <div class="bk-main">
+          <div class="bk-title">${esc(st.time)} · ${esc(st.title)}</div>
+          <input class="bk-conf" data-conf="${di}:${si}" placeholder="Confirmation link or number" value="${esc(st.confirm || "")}"/>
+        </div>
+      </div>`;
+    });
+  });
+  openSheet("Bookings 🎟", html);
+}
+
+$("sheetBack").addEventListener("click", closeSheet);
+$("sheetBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-bk]");
+  if (b) {
+    const [di, si] = b.dataset.bk.split(":").map(Number);
+    const st = curTrip().days[di].stops[si];
+    st.booked = !st.booked; save();
+    b.classList.toggle("on", st.booked); b.textContent = st.booked ? "✓" : "";
+  }
+});
+$("sheetBody").addEventListener("input", e => {
+  const c = e.target.closest("[data-conf]");
+  if (c) {
+    const [di, si] = c.dataset.conf.split(":").map(Number);
+    const st = curTrip().days[di].stops[si];
+    const v = c.value.trim(); if (v) st.confirm = v; else delete st.confirm; save();
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Route optimizer — per trip. Same engine as the Paris app: cluster  */
+/*  into days, order with NN + 2-opt, every day starts/ends at the     */
+/*  hotel and gets breakfast, lunch & dinner.                          */
+/* ------------------------------------------------------------------ */
+const OPT_CATS = ["Sight", "Museum", "Breakfast", "Lunch", "Dinner", "Walk / Rest", "Bar"];
+const OPT_MEALS = ["Breakfast", "Lunch", "Dinner"];
+const OPT_DUR = { Breakfast: 40, Lunch: 75, Dinner: 90, Museum: 120, Sight: 45, "Walk / Rest": 40, Bar: 60 };
+const OPT_MEAL_EARLIEST = { Lunch: 12 * 60 + 30, Dinner: 19 * 60 + 30 };
+const OPT_TAGS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", sight: "Sight", museum: "Museum", bar: "Bar", walk: "Walk / Rest" };
+let opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false };
+
+function optGuessCat(name) {
+  if (/breakfast|brunch|coffee|café|\bcafe\b|boulangerie|bakery|p[âa]tisserie/i.test(name)) return "Breakfast";
+  if (/dinner|brasserie/i.test(name)) return "Dinner";
+  if (/lunch|bistro|restaurant|bouillon|cr[êe]perie|trattoria|pizzeria/i.test(name)) return "Lunch";
+  if (/\bbar\b|cocktail|jazz|club/i.test(name)) return "Bar";
+  if (/mus[ée]e|museum|galerie|gallery|louvre|orsay|fondation/i.test(name)) return "Museum";
+  if (/jardin|garden|\bparc\b|\bpark\b|promenade|berges|beach|playa|plage/i.test(name)) return "Walk / Rest";
+  return "Sight";
+}
+
+function optParseLine(raw) {
+  let t = raw.replace(/^\s*(?:[-•·*]|\d+[.)])\s*/, "").trim();
+  if (!t) return null;
+  let lat = null, lng = null, cat = null;
+  const tag = t.match(/#(breakfast|lunch|dinner|sight|museum|bar|walk)\b/i);
+  if (tag) { cat = OPT_TAGS[tag[1].toLowerCase()]; t = (t.slice(0, tag.index) + t.slice(tag.index + tag[0].length)).trim(); }
+  const url = t.match(/https?:\/\/\S+/);
+  if (url) {
+    const c = parseCoords(url[0]);
+    if (c) { lat = c.lat; lng = c.lng; }
+    t = (t.slice(0, url.index) + t.slice(url.index + url[0].length)).trim();
+  }
+  const tail = t.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+  if (tail) { lat = +tail[1]; lng = +tail[2]; t = t.slice(0, tail.index).trim(); }
+  t = t.replace(/[|,;:–—-]+\s*$/, "").trim();
+  if (!t && lat == null) return null;
+  const name = t || "Pinned place";
+  return { name, category: cat || optGuessCat(name), lat, lng, status: lat != null ? "ok" : "todo" };
+}
+
+async function optResolveCity() {
+  const name = $("optCity").value.trim();
+  if (!name) { opt.city = null; return false; }
+  const key = name.toLowerCase();
+  if (key in opt.cityCache) { opt.city = opt.cityCache[key]; return false; }
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en&q=" + encodeURIComponent(name));
+    const j = r.ok ? await r.json() : [];
+    opt.city = (j && j.length) ? { name, lat: +j[0].lat, lng: +j[0].lon, box: j[0].boundingbox } : null;
+  } catch (e) { opt.city = null; }
+  opt.cityCache[key] = opt.city;
+  return true;
+}
+
+async function optGeocode(name) {
+  let q = name, extra = "";
+  if (opt.city) {
+    if (!name.toLowerCase().includes(opt.city.name.toLowerCase())) q = name + ", " + opt.city.name;
+    const b = opt.city.box; // [south, north, west, east]
+    if (b && b.length === 4) extra = "&viewbox=" + [b[2], b[1], b[3], b[0]].join(",");
+  }
+  const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
+    + extra + "&q=" + encodeURIComponent(q);
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const j = await r.json();
+  return (j && j.length) ? { lat: +j[0].lat, lng: +j[0].lon } : null;
+}
+
+/* Home base: pasted coords → geocoded hotel → the trip's saved hotel →
+   middle of the located places → city centre. */
+function optHotelCoords() {
+  const pasted = parseCoords($("optHotelLoc").value.trim());
+  if (pasted) return pasted;
+  if (opt.hotel) return opt.hotel;
+  const t = curTrip();
+  if (t && t.hotel && t.hotel.lat != null) return { lat: t.hotel.lat, lng: t.hotel.lng };
+  const ok = opt.places.filter(p => p.status === "ok");
+  if (ok.length) return {
+    lat: ok.reduce((sum, p) => sum + p.lat, 0) / ok.length,
+    lng: ok.reduce((sum, p) => sum + p.lng, 0) / ok.length
+  };
+  return opt.city ? { lat: opt.city.lat, lng: opt.city.lng } : { lat: 0, lng: 0 };
+}
+
+async function optLocateAll() {
+  if (opt.busy) return;
+  const lines = $("optInput").value.split(/\r?\n/).map(optParseLine).filter(Boolean);
+  if (!lines.length) { alert("Paste at least one place first — one per line."); return; }
+  opt.places = lines; opt.plan = null; opt.sugg = null; opt.hotel = null; renderOptPlan();
+  opt.busy = true; renderOptReview();
+  const wait = () => new Promise(res => setTimeout(res, 1100)); // Nominatim asks for ≤ 1 request/sec
+  let fetched = await optResolveCity();
+  const hotelName = $("optHotelName").value.trim();
+  const t = curTrip();
+  const haveTripHotel = t && t.hotel && t.hotel.lat != null && t.hotel.name === hotelName;
+  if (!parseCoords($("optHotelLoc").value.trim()) && hotelName && !haveTripHotel) {
+    if (fetched) await wait();
+    try { opt.hotel = await optGeocode(hotelName); } catch (e) { opt.hotel = null; }
+    fetched = true;
+  }
+  for (const p of opt.places) {
+    if (p.status === "ok") continue;
+    if (fetched) await wait();
+    fetched = true;
+    p.status = "loading"; renderOptReview();
+    try {
+      const c = await optGeocode(p.name);
+      if (c) { p.lat = c.lat; p.lng = c.lng; p.status = "ok"; } else p.status = "miss";
+    } catch (e) { p.status = "miss"; }
+    renderOptReview();
+  }
+  opt.busy = false; renderOptReview();
+}
+
+async function optSuggest() {
+  if (opt.suggBusy) return;
+  opt.suggBusy = true; renderOptReview();
+  const c = optHotelCoords();
+  const around = r => `(around:${r},${c.lat.toFixed(5)},${c.lng.toFixed(5)})`;
+  const q = `[out:json][timeout:20];(nwr["amenity"="cafe"]["name"]${around(1500)};nwr["shop"="bakery"]["name"]${around(1500)};nwr["amenity"="restaurant"]["name"]${around(1500)};);out center 120;`;
+  try {
+    const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q));
+    if (!r.ok) throw new Error("overpass " + r.status);
+    const j = await r.json();
+    const seen = new Set();
+    const items = (j.elements || []).map(el => {
+      const lat = el.lat != null ? el.lat : el.center && el.center.lat;
+      const lng = el.lon != null ? el.lon : el.center && el.center.lon;
+      const name = el.tags && el.tags.name;
+      if (lat == null || lng == null || !name) return null;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return null;
+      seen.add(key);
+      const breakfast = (el.tags.amenity === "cafe" || el.tags.shop === "bakery");
+      return { name, lat, lng, breakfast, d: optDist({ lat, lng }, c) };
+    }).filter(Boolean).sort((a, b) => a.d - b.d);
+    const rest = items.filter(x => !x.breakfast).slice(0, 8);
+    opt.sugg = { Breakfast: items.filter(x => x.breakfast).slice(0, 8), Lunch: rest, Dinner: rest };
+  } catch (e) { opt.sugg = "error"; }
+  opt.suggBusy = false; renderOptReview();
+}
+
+function optMaxDays() { const t = curTrip(); return t ? t.days.length : 7; }
+function optRules() {
+  const days = Math.min(optMaxDays(), Math.max(1, Math.round(+$("optDays").value) || 1));
+  const missing = [];
+  OPT_MEALS.forEach(m => {
+    const have = opt.places.filter(p => p.category === m && p.status === "ok").length;
+    if (have < days) missing.push(`${days - have} ${m.toLowerCase()} spot${days - have > 1 ? "s" : ""}`);
+  });
+  return { days, missing };
+}
+
+function renderOptReview() {
+  const box = $("optReview");
+  if (!opt.places.length) { box.innerHTML = ""; return; }
+  const { days, missing } = optRules();
+  const located = opt.places.filter(p => p.status === "ok").length;
+  let html = `<h4>Your places · ${located}/${opt.places.length} located</h4>`;
+  opt.places.forEach((p, i) => {
+    const icon = { ok: "✅", loading: "⏳", miss: "❌" }[p.status] || "▫️";
+    const cs = catStyle(p.category);
+    const showFix = p.status === "miss" && !opt.busy;
+    html += `<div><div class="opt-row">
+      <span class="opt-status">${icon}</span>
+      <span class="opt-name">${esc(p.name)}${showFix ? `<small>Not found — paste a full Maps link or "lat, lng" below</small>` : ""}</span>
+      <button class="opt-cat ${OPT_MEALS.includes(p.category) ? "meal" : ""}" data-ocat="${i}" title="Tap to change category">${cs.emoji} ${esc(p.category)}</button>
+      <button class="opt-x" data-odel="${i}" aria-label="Remove">✕</button>
+    </div>${showFix ? `<input class="opt-fix" data-ofix="${i}" placeholder="https://maps.google.com/…  or  48.8566, 2.3522"/>` : ""}</div>`;
+  });
+  if (opt.busy) {
+    html += `<div class="opt-warn">⏳ Locating your places (free OpenStreetMap search, about one per second)…</div>`;
+  } else if (missing.length) {
+    html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, tap a category chip to retag a place, or let me suggest some spots near your hotel.</div>`;
+    html += renderOptSugg(days);
+  } else {
+    html += `<div class="opt-ok">✅ Rules satisfied — every day gets breakfast, lunch &amp; dinner and starts/ends at your hotel.</div>`;
+  }
+  if (!opt.busy && !parseCoords($("optHotelLoc").value.trim()) && $("optHotelName").value.trim() && !opt.hotel && !(curTrip() && curTrip().hotel && curTrip().hotel.lat != null)) {
+    html += `<div class="opt-warn">🏨 Couldn't locate the hotel by name — paste a Maps link or "lat, lng" in the hotel field, or I'll use the middle of your places as home base.</div>`;
+  }
+  const ready = !opt.busy && !missing.length && located > 0;
+  html += `<button class="btn primary" id="optGo" style="width:100%${ready ? "" : ";opacity:.5"}" ${ready ? "" : "disabled"}>⚡ Optimize my route</button>`;
+  box.innerHTML = html;
+}
+
+function renderOptSugg(days) {
+  if (opt.suggBusy) return `<div class="opt-warn">⏳ Looking for good spots near your hotel (OpenStreetMap)…</div>`;
+  if (opt.sugg === "error") return `<div class="opt-warn">😕 Couldn't load suggestions right now — try again in a moment.</div><button class="btn" id="optSuggest" style="width:100%">🍳 Retry suggestions</button>`;
+  if (!opt.sugg) return `<button class="btn" id="optSuggest" style="width:100%">🍳 Suggest nearby breakfast / lunch / dinner spots</button>`;
+  const taken = new Set(opt.places.map(p => p.name.toLowerCase()));
+  let html = "";
+  OPT_MEALS.forEach(m => {
+    const need = days - opt.places.filter(p => p.category === m && p.status === "ok").length;
+    if (need <= 0) return;
+    const list = opt.sugg[m] || [];
+    html += `<div class="opt-sug-h">${catStyle(m).emoji} ${m} — need ${need} more, tap to add:</div><div>`;
+    if (!list.length) html += `<span class="sub">Nothing found near the hotel — add one by name above.</span>`;
+    list.forEach((sg, i) => {
+      const dup = taken.has(sg.name.toLowerCase());
+      html += `<button class="opt-sug" data-osug="${m}:${i}" ${dup ? "disabled" : ""}>＋ ${esc(sg.name)} · ${sg.d < 1 ? Math.round(sg.d * 1000) + " m" : sg.d.toFixed(1) + " km"}</button>`;
+    });
+    html += `</div>`;
+  });
+  return html;
+}
+
+/* ---- The optimizer engine ---- */
+function optDist(a, b) { return haversine(a, b); }
+
+function optClusters(pts, k) {
+  const out = Array.from({ length: k }, () => []);
+  if (!pts.length) return out;
+  const kk = Math.min(k, pts.length);
+  const cents = [{ lat: pts[0].lat, lng: pts[0].lng }];
+  while (cents.length < kk) {
+    let best = pts[0], bd = -1;
+    pts.forEach(p => {
+      const d = Math.min(...cents.map(c => optDist(p, c)));
+      if (d > bd) { bd = d; best = p; }
+    });
+    cents.push({ lat: best.lat, lng: best.lng });
+  }
+  let assign = pts.map(() => 0);
+  for (let iter = 0; iter < 12; iter++) {
+    assign = pts.map(p => {
+      let bi = 0, bd = Infinity;
+      cents.forEach((c, i) => { const d = optDist(p, c); if (d < bd) { bd = d; bi = i; } });
+      return bi;
+    });
+    cents.forEach((c, i) => {
+      const mine = pts.filter((_, j) => assign[j] === i);
+      if (mine.length) {
+        c.lat = mine.reduce((sum, p) => sum + p.lat, 0) / mine.length;
+        c.lng = mine.reduce((sum, p) => sum + p.lng, 0) / mine.length;
+      }
+    });
+  }
+  const cap = Math.ceil(pts.length / kk);
+  const counts = Array(kk).fill(0);
+  assign.forEach(a => counts[a]++);
+  let guard = 0;
+  while (guard++ < 300) {
+    const over = counts.findIndex(c => c > cap);
+    if (over < 0) break;
+    let bj = -1, bd = Infinity, target = -1;
+    pts.forEach((p, j) => {
+      if (assign[j] !== over) return;
+      cents.forEach((c, i) => {
+        if (i === over || counts[i] >= cap) return;
+        const d = optDist(p, c);
+        if (d < bd) { bd = d; bj = j; target = i; }
+      });
+    });
+    if (bj < 0) break;
+    counts[over]--; counts[target]++; assign[bj] = target;
+  }
+  pts.forEach((p, j) => out[assign[j]].push(p));
+  return out;
+}
+
+function optAssignMeals(pool, centroids, hotel) {
+  const res = centroids.map(() => ({}));
+  OPT_MEALS.forEach(m => {
+    const pairs = [];
+    pool[m].forEach(p => centroids.forEach((c, d) => {
+      const cost = m === "Breakfast" ? optDist(p, hotel) + 0.5 * optDist(p, c) : optDist(p, c);
+      pairs.push({ p, d, cost });
+    }));
+    pairs.sort((a, b) => a.cost - b.cost);
+    const used = new Set();
+    pairs.forEach(({ p, d }) => {
+      if (res[d][m] || used.has(p)) return;
+      res[d][m] = p; used.add(p);
+    });
+    pool[m] = pool[m].filter(p => !used.has(p));
+  });
+  return res;
+}
+
+function optTwoOpt(seq) {
+  let s2 = seq.slice(), improved = true, guard = 0;
+  while (improved && guard++ < 60) {
+    improved = false;
+    for (let i = 1; i < s2.length - 2; i++) {
+      for (let j = i + 1; j < s2.length - 1; j++) {
+        const delta = optDist(s2[i - 1], s2[j]) + optDist(s2[i], s2[j + 1])
+                    - optDist(s2[i - 1], s2[i]) - optDist(s2[j], s2[j + 1]);
+        if (delta < -1e-9) { s2 = s2.slice(0, i).concat(s2.slice(i, j + 1).reverse(), s2.slice(j + 1)); improved = true; }
+      }
+    }
+  }
+  return s2;
+}
+
+function optOrderDay(bfast, lunch, dinner, acts) {
+  let rest = acts.slice(), route = [], cur = bfast;
+  while (rest.length) {
+    let bi = 0, bd = Infinity;
+    rest.forEach((p, i) => { const d = optDist(cur, p); if (d < bd) { bd = d; bi = i; } });
+    cur = rest.splice(bi, 1)[0]; route.push(cur);
+  }
+  const chain = optTwoOpt([bfast].concat(route, [dinner]));
+  const lo = Math.min(Math.max(1, Math.ceil((chain.length - 2) / 2)), chain.length - 2);
+  let best = Math.max(0, chain.length - 2), bd = Infinity;
+  for (let i = Math.max(0, lo); i <= chain.length - 2; i++) {
+    const add = optDist(chain[i], lunch) + optDist(lunch, chain[i + 1]) - optDist(chain[i], chain[i + 1]);
+    if (add < bd) { bd = add; best = i; }
+  }
+  chain.splice(best + 1, 0, lunch);
+  return chain;
+}
+
+function optTravelMin(a, b) {
+  const l = legInfo(a, b);
+  if (!l.ok) return 10;
+  return l.long ? Math.round(12 + l.km * 4) : l.min;
+}
+
+function optScheduleDay(hotel, seq, startMin, dayIdx) {
+  const t = curTrip();
+  const dateIso = t.days[dayIdx] ? t.days[dayIdx].date : t.start;
+  const stops = [s(fmtMin(startMin), hotel.name, "Hotel", "Start", "Leave the hotel.", hotel.lat, hotel.lng)];
+  let cur = startMin, prev = hotel;
+  seq.forEach(p => {
+    cur += optTravelMin(prev, p);
+    if (OPT_MEAL_EARLIEST[p.category] != null) cur = Math.max(cur, OPT_MEAL_EARLIEST[p.category]);
+    const dur = OPT_DUR[p.category] || 45;
+    stops.push(s(fmtMin(cur), p.name, p.category, "~" + dur + " min", "", p.lat, p.lng));
+    cur += dur; prev = p;
+  });
+  cur += optTravelMin(prev, hotel);
+  stops.push(s(fmtMin(cur), hotel.name, "Hotel", "End", "Back to the hotel.", hotel.lat, hotel.lng));
+  return { date: fmtDay(dateIso), stops };
+}
+
+function optRun() {
+  const { days, missing } = optRules();
+  if (missing.length || opt.busy) return;
+  const hotelLoc = optHotelCoords();
+  const hotel = { name: $("optHotelName").value.trim() || "Hotel", lat: hotelLoc.lat, lng: hotelLoc.lng };
+  const startParsed = parseMin($("optStart").value);
+  const startMin = startParsed != null ? startParsed : 540;
+  const usable = opt.places.filter(p => p.status === "ok");
+  const skipped = opt.places.length - usable.length;
+  const pool = { Breakfast: [], Lunch: [], Dinner: [] };
+  const acts = [];
+  usable.forEach(p => { (pool[p.category] || acts).push(p); });
+  const clusters = optClusters(acts, days);
+  const centroids = clusters.map(cl => cl.length
+    ? { lat: cl.reduce((sum, p) => sum + p.lat, 0) / cl.length, lng: cl.reduce((sum, p) => sum + p.lng, 0) / cl.length }
+    : hotel);
+  const meals = optAssignMeals(pool, centroids, hotel);
+  const planDays = [];
+  for (let d = 0; d < days; d++) {
+    const seq = optOrderDay(meals[d].Breakfast, meals[d].Lunch, meals[d].Dinner, clusters[d]);
+    planDays.push(optScheduleDay(hotel, seq, startMin, d));
+  }
+  const unused = [].concat(pool.Breakfast, pool.Lunch, pool.Dinner).map(p => p.name);
+  opt.plan = { days: planDays, skipped, unused };
+  renderOptPlan();
+  $("optPlan").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderOptPlan() {
+  const box = $("optPlan");
+  if (!opt.plan) { box.innerHTML = ""; return; }
+  let html = `<h4>Optimized plan ✨</h4>`;
+  if (opt.plan.skipped) html += `<div class="opt-warn">⚠️ ${opt.plan.skipped} place${opt.plan.skipped > 1 ? "s" : ""} without a location ${opt.plan.skipped > 1 ? "were" : "was"} left out — fix ${opt.plan.skipped > 1 ? "them" : "it"} above and re-optimize.</div>`;
+  if (opt.plan.unused.length) html += `<div class="opt-warn">🍽️ More food spots than days needed — left out: ${opt.plan.unused.map(esc).join(", ")}.</div>`;
+  opt.plan.days.forEach((d, i) => {
+    let walkKm = 0;
+    for (let j = 0; j < d.stops.length - 1; j++) { const l = legInfo(d.stops[j], d.stops[j + 1]); if (l.ok) walkKm += l.km; }
+    html += `<div class="opt-day"><h4>Day ${i + 1} · ${esc(d.date)}</h4><div class="meta">${d.stops.length} stops · ~${walkKm.toFixed(1)} km between stops</div>`;
+    d.stops.forEach((st, j) => {
+      const cs = catStyle(st.category);
+      html += `<div class="opt-stop"><span class="t">${esc(st.time)}</span><span>${cs.emoji}</span><span>${esc(st.title)}</span></div>`;
+      if (j < d.stops.length - 1) {
+        const l = legInfo(st, d.stops[j + 1]);
+        if (l.ok && l.km >= 0.05) html += `<div class="opt-leg">${l.long ? "🚕 " + l.km.toFixed(1) + " km — metro/taxi" : "🚶 " + l.km.toFixed(1) + " km · " + l.min + " min"}</div>`;
+      }
+    });
+    html += `</div>`;
+  });
+  html += `<button class="btn primary" id="optApply" style="width:100%">✅ Use this plan — fills the trip's days</button>
+    <p class="sub" style="margin-top:8px">This replaces the planned stops on the first ${opt.plan.days.length} day${opt.plan.days.length > 1 ? "s" : ""} of this trip. Memories and bookings on replaced stops are lost — back up first if unsure.</p>`;
+  box.innerHTML = html;
+}
+
+function optApply() {
+  if (!opt.plan) return;
+  const t = curTrip(); if (!t) return;
+  if (!confirm("Replace this trip's planned days with the optimized ones?")) return;
+  opt.plan.days.forEach((d, i) => {
+    if (!t.days[i]) return;
+    t.days[i].stops = d.stops;
+    t.days[i].title = "Optimized day";
+  });
+  activeDay = 0; save(); closeOpt(); render();
+}
+
+function openOpt() {
+  const t = curTrip(); if (!t) return;
+  $("optCity").value = t.destination || "";
+  $("optDays").value = t.days.length;
+  $("optDays").max = t.days.length;
+  $("optHotelName").value = t.hotel ? (t.hotel.name || "") : "";
+  $("optHotelLoc").value = "";
+  $("optSheet").classList.remove("hidden");
+  $("optSheet").scrollTop = 0;
+}
+function closeOpt() { $("optSheet").classList.add("hidden"); }
+
+$("optBack").addEventListener("click", closeOpt);
+$("optParse").addEventListener("click", optLocateAll);
+$("optDays").addEventListener("input", () => { if (opt.places.length) renderOptReview(); });
+$("optReview").addEventListener("click", e => {
+  const cat = e.target.closest("[data-ocat]");
+  if (cat) {
+    const p = opt.places[+cat.dataset.ocat];
+    p.category = OPT_CATS[(OPT_CATS.indexOf(p.category) + 1) % OPT_CATS.length];
+    renderOptReview(); return;
+  }
+  const del = e.target.closest("[data-odel]");
+  if (del) { opt.places.splice(+del.dataset.odel, 1); renderOptReview(); return; }
+  const sug = e.target.closest("[data-osug]");
+  if (sug && !sug.disabled) {
+    const [m, i] = sug.dataset.osug.split(":");
+    const sgList = opt.sugg && opt.sugg[m];
+    const sg = sgList && sgList[+i];
+    if (sg && !opt.places.some(p => p.name.toLowerCase() === sg.name.toLowerCase())) {
+      opt.places.push({ name: sg.name, category: m, lat: sg.lat, lng: sg.lng, status: "ok" });
+    }
+    renderOptReview(); return;
+  }
+  if (e.target.closest("#optSuggest")) { optSuggest(); return; }
+  if (e.target.closest("#optGo")) optRun();
+});
+$("optReview").addEventListener("input", e => {
+  const fix = e.target.closest("[data-ofix]"); if (!fix) return;
+  const c = parseCoords(fix.value);
+  if (c) {
+    const p = opt.places[+fix.dataset.ofix];
+    p.lat = c.lat; p.lng = c.lng; p.status = "ok";
+    renderOptReview();
+  }
+});
+$("optPlan").addEventListener("click", e => { if (e.target.closest("#optApply")) optApply(); });
+
+/* ------------------------------------------------------------------ */
+/*  Recap share card (canvas → PNG)                                    */
+/* ------------------------------------------------------------------ */
+function drawRecap(t) {
+  const x = tripStats(t);
+  const W = 1080, H = 1350;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#171e30");
+  bg.addColorStop(1, "#2a3550");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "110px -apple-system, 'Segoe UI Emoji', sans-serif";
+  ctx.fillText(t.emoji || "🌍", W / 2, 190);
+  ctx.font = "800 76px -apple-system, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(t.name, W / 2, 310);
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.font = "600 36px -apple-system, 'Segoe UI', Roboto, sans-serif";
+  const sub = fmtRange(t) + (t.participants && t.participants.length ? "  ·  " + t.participants.join(" & ") : "");
+  ctx.fillText(sub, W / 2, 372);
+
+  /* Route: every located stop, in day order, drawn like an activity trace. */
+  const pts = [];
+  t.days.forEach(d => d.stops.forEach(st => { if (st.lat != null) pts.push(st); }));
+  if (pts.length > 1) {
+    const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
+    const minLa = Math.min(...lats), maxLa = Math.max(...lats);
+    const minLo = Math.min(...lngs), maxLo = Math.max(...lngs);
+    const box = { x: 180, y: 440, w: W - 360, h: 380 };
+    const sx = lng => box.x + (maxLo === minLo ? box.w / 2 : (lng - minLo) / (maxLo - minLo) * box.w);
+    const sy = lat => box.y + (maxLa === minLa ? box.h / 2 : (maxLa - lat) / (maxLa - minLa) * box.h);
+    ctx.strokeStyle = "#7fa7ff";
+    ctx.lineWidth = 6;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    pts.forEach((p, i) => { const px = sx(p.lng), py = sy(p.lat); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    pts.forEach(p => { ctx.beginPath(); ctx.arc(sx(p.lng), sy(p.lat), 8, 0, Math.PI * 2); ctx.fill(); });
+  }
+
+  /* Stat tiles: label muted, value big — text carries it, no decorative color. */
+  const tiles = [
+    [String(x.days), "days"], [String(x.stops), "stops"], [x.km.toFixed(1), "km walked"],
+    [String(x.visited), "places loved"], [String(x.photos), "photos"], [String(x.notes), "memories"]
+  ];
+  const gx = 90, gy = 900, gw = (W - 2 * gx - 2 * 24) / 3, gh = 170, gap = 24;
+  tiles.forEach(([v, l], i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const tx = gx + col * (gw + gap), ty = gy + row * (gh + gap);
+    ctx.fillStyle = "rgba(255,255,255,.08)";
+    ctx.beginPath();
+    ctx.roundRect(tx, ty, gw, gh, 22);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 64px -apple-system, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(v, tx + gw / 2, ty + 92);
+    ctx.fillStyle = "rgba(255,255,255,.6)";
+    ctx.font = "600 26px -apple-system, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(l, tx + gw / 2, ty + 138);
+  });
+
+  ctx.fillStyle = "rgba(255,255,255,.45)";
+  ctx.font = "650 28px -apple-system, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText("🧳 Tripline", W / 2, H - 56);
+  return c;
+}
+
+function shareRecap() {
+  const t = curTrip(); if (!t) return;
+  const c = drawRecap(t);
+  c.toBlob(async blob => {
+    if (!blob) { alert("Couldn't build the recap image."); return; }
+    const file = new File([blob], t.name.replace(/\s+/g, "-").toLowerCase() + "-recap.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: t.name + " — trip recap" }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; /* fall through to download */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, "image/png");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Export / import                                                    */
+/* ------------------------------------------------------------------ */
+function download(objOrBlob, filename) {
+  const blob = objOrBlob instanceof Blob ? objOrBlob
+    : new Blob([JSON.stringify(objOrBlob, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function importData(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (parsed && Array.isArray(parsed.trips)) {
+        if (!confirm(`Replace ALL trips with this backup (${parsed.trips.length} trip${parsed.trips.length === 1 ? "" : "s"})?`)) return;
+        store = { version: 1, trips: parsed.trips };
+        curTripId = null;
+      } else if (parsed && parsed.start && Array.isArray(parsed.days)) {
+        parsed.id = uid();
+        store.trips.push(parsed);
+        curTripId = parsed.id;
+      } else if (parsed && Array.isArray(parsed.days) && parsed.days.length) {
+        // legacy single-itinerary backup (the original Paris page format)
+        const start = parseISO("2026-07-15");
+        const t = {
+          id: uid(), name: "Imported trip", destination: "", emoji: "🧳",
+          start: isoStr(start), end: isoStr(addDays(start, parsed.days.length - 1)),
+          participants: [],
+          hotel: null,
+          days: parsed.days.map((d, i) => ({ id: d.id || uid(), date: isoStr(addDays(start, i)), title: d.title || "Day " + (i + 1), stops: d.stops || [] }))
+        };
+        store.trips.push(t);
+        curTripId = t.id;
+      } else throw new Error("bad file");
+      activeDay = 0; save(); render();
+      alert("Imported.");
+    } catch (e) { alert("That file didn't look like a valid backup."); }
+  };
+  reader.readAsText(file);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Events                                                             */
+/* ------------------------------------------------------------------ */
+$("tripSections").addEventListener("click", e => {
+  const card = e.target.closest("[data-trip]");
+  if (!card) return;
+  curTripId = card.dataset.trip;
+  activeDay = 0; editing = false; mapVisible = false;
+  $("mapPanel").classList.add("hidden");
+  render();
+  window.scrollTo(0, 0);
+});
+$("newTripBtn").addEventListener("click", () => openTripModal(null));
+$("hExport").addEventListener("click", () => download(store, "tripline-backup.json"));
+$("hImport").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; });
+
+$("backBtn").addEventListener("click", () => {
+  curTripId = null; editing = false; mapVisible = false;
+  $("mapPanel").classList.add("hidden");
+  render();
+  window.scrollTo(0, 0);
+});
+
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  activeDay = +b.dataset.day; render();
+});
+
+$("editBtn").addEventListener("click", () => { editing = !editing; render(); });
+
+$("stopList").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const t = curTrip();
+  const day = t.days[activeDay];
+  const i = +b.dataset.i;
+  const act = b.dataset.act;
+  if (act === "up" && i > 0) { [day.stops[i - 1], day.stops[i]] = [day.stops[i], day.stops[i - 1]]; save(); render(); }
+  else if (act === "down" && i < day.stops.length - 1) { [day.stops[i + 1], day.stops[i]] = [day.stops[i], day.stops[i + 1]]; save(); render(); }
+  else if (act === "edit") openModal(i, null);
+  else if (act === "del") { modalCtx = { dayIndex: activeDay, stopIndex: i, insertAt: null }; deleteStop(); }
+  else if (act === "insert") openModal(null, i);
+  else if (act === "heart") { day.stops[i].snapped = !day.stops[i].snapped; save(); render(); }
+  else if (act === "tiktok") openTikTok(searchName(day.stops[i].title) + " " + (t.destination || ""));
+  else if (act === "mem") openMem(activeDay, i);
+});
+
+$("addStop").addEventListener("click", () => openModal(null, null));
+
+$("dayMeta").addEventListener("click", e => {
+  if (e.target.closest("#toggleMap")) {
+    mapVisible = !mapVisible;
+    $("mapPanel").classList.toggle("hidden", !mapVisible);
+    renderDayMeta();
+    if (mapVisible) renderMap();
+  } else if (e.target.closest("#shiftBtn")) {
+    shiftTimes(curTrip().days[activeDay].stops, nowStopIdx != null ? nowStopIdx : 0, 30);
+    save(); render();
+  }
+});
+
+$("recapPanel").addEventListener("click", e => { if (e.target.closest("#shareRecap")) shareRecap(); });
+
+// Stop modal buttons
+$("fSave").addEventListener("click", saveModal);
+$("fCancel").addEventListener("click", closeModal);
+$("fClose").addEventListener("click", closeModal);
+$("fDelete").addEventListener("click", deleteStop);
+$("fUsePrev").addEventListener("click", () => {
+  const day = curTrip().days[modalCtx.dayIndex];
+  const idx = modalCtx.stopIndex != null ? modalCtx.stopIndex - 1
+            : (modalCtx.insertAt != null ? modalCtx.insertAt - 1 : day.stops.length - 1);
+  const prev = day.stops[idx];
+  if (prev && prev.lat != null) { $("f-lat").value = prev.lat; $("f-lng").value = prev.lng; }
+});
+$("f-paste").addEventListener("input", e => {
+  const c = parseCoords(e.target.value);
+  if (c) { $("f-lat").value = c.lat; $("f-lng").value = c.lng; e.target.style.borderColor = "#16a34a"; }
+  else { e.target.style.borderColor = ""; }
+});
+$("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+
+// Trip modal buttons
+$("tSave").addEventListener("click", saveTripModal);
+$("tCancel").addEventListener("click", closeTripModal);
+$("tClose").addEventListener("click", closeTripModal);
+$("tripModal").addEventListener("click", e => { if (e.target.id === "tripModal") closeTripModal(); });
+
+// Overflow menu
+$("menuBtn").addEventListener("click", e => { e.stopPropagation(); $("menu").classList.toggle("hidden"); });
+document.addEventListener("click", () => $("menu").classList.add("hidden"));
+$("menu").addEventListener("click", e => e.stopPropagation());
+$("mMemories").addEventListener("click", () => { $("menu").classList.add("hidden"); openMemories(); });
+$("mBookings").addEventListener("click", () => { $("menu").classList.add("hidden"); openBookings(); });
+$("mOptimize").addEventListener("click", () => { $("menu").classList.add("hidden"); openOpt(); });
+$("mEditTrip").addEventListener("click", () => { $("menu").classList.add("hidden"); openTripModal(curTripId); });
+$("mExport").addEventListener("click", () => {
+  $("menu").classList.add("hidden");
+  const t = curTrip(); if (!t) return;
+  download(t, t.name.replace(/\s+/g, "-").toLowerCase() + "-trip.json");
+});
+$("mPrint").addEventListener("click", () => { $("menu").classList.add("hidden"); window.print(); });
+$("mDelete").addEventListener("click", () => { $("menu").classList.add("hidden"); deleteTrip(); });
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeModal(); closeTripModal(); closeMem(); closeSheet(); closeOpt(); $("menu").classList.add("hidden"); }
+});
+
+// Refresh the "happening now" highlight each minute (only in trip view, no dialog open).
+setInterval(() => {
+  if (!curTrip()) return;
+  if (!$("modal").classList.contains("hidden")) return;
+  if (!$("tripModal").classList.contains("hidden")) return;
+  if (!$("memModal").classList.contains("hidden")) return;
+  if (!$("sheet").classList.contains("hidden")) return;
+  render();
+}, 60000);
+
+render();
+</script>
+</body>
+</html>
