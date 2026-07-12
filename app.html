@@ -11,6 +11,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #f6f4ee;
@@ -70,6 +71,7 @@
   .trip-stats { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .trip-chev { color: var(--muted); font-size: 20px; flex: 0 0 auto; }
   .home-foot { display: flex; gap: 8px; justify-content: center; margin-top: 20px; }
+  .acct { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .empty-home { text-align: center; color: var(--muted); padding: 36px 16px 10px; font-size: 14px; line-height: 1.5; }
   .empty-home .big { font-size: 40px; margin-bottom: 8px; }
 
@@ -330,6 +332,7 @@
   <header>
     <h1><span class="em">🧳</span> Tripline</h1>
     <div class="subtitle">Every trip, day by day. Plan it with whoever you're going with, live it on the ground, then relive it as a recap.</div>
+    <div class="acct" id="accountRow"></div>
     <div class="tripbar" id="lifeStats"></div>
   </header>
   <div class="content">
@@ -463,7 +466,12 @@
   </div>
   <div class="sheet-body">
     <p class="sub">
-      Paste the places from your Google Maps list — <b>one per line</b>. A line can also include a full Maps link
+      This plans the whole trip: places are clustered into days, ordered to minimise walking, and every day
+      starts &amp; ends at your hotel with a breakfast, a lunch and a dinner.
+    </p>
+    <div id="gImport"></div>
+    <p class="sub">
+      Or paste places by hand — <b>one per line</b>. A line can also include a full Maps link
       or "lat, lng", and you can tag meals inline with <b>#breakfast</b> <b>#lunch</b> <b>#dinner</b> —
       otherwise categories are guessed and you can tap to change them.
     </p>
@@ -502,6 +510,7 @@
 </div>
 
 <input type="file" id="importFile" accept="application/json,.json" class="hidden"/>
+<input type="file" id="csvFile" accept=".csv,text/csv" class="hidden"/>
 
 <script>
 "use strict";
@@ -1186,6 +1195,9 @@ function saveTripModal() {
     rebuildDays(t);
     store.trips.push(t);
     curTripId = t.id; activeDay = 0; editing = false;
+    save(); closeTripModal(); render();
+    openOpt(); // a new trip starts in the route planner — the plan comes out of it
+    return;
   }
   save(); closeTripModal(); render();
 }
@@ -1501,11 +1513,11 @@ function renderOptReview() {
   if (opt.busy) {
     html += `<div class="opt-warn">⏳ Locating your places (free OpenStreetMap search, about one per second)…</div>`;
   } else if (missing.length) {
-    html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, tap a category chip to retag a place, or let me suggest some spots near your hotel.</div>`;
-    html += renderOptSugg(days);
+    html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, tap a category chip to retag a place, or use the recommendations below.</div>`;
   } else {
     html += `<div class="opt-ok">✅ Rules satisfied — every day gets breakfast, lunch &amp; dinner and starts/ends at your hotel.</div>`;
   }
+  if (!opt.busy) html += renderOptSugg(days);
   if (!opt.busy && !parseCoords($("optHotelLoc").value.trim()) && $("optHotelName").value.trim() && !opt.hotel && !(curTrip() && curTrip().hotel && curTrip().hotel.lat != null)) {
     html += `<div class="opt-warn">🏨 Couldn't locate the hotel by name — paste a Maps link or "lat, lng" in the hotel field, or I'll use the middle of your places as home base.</div>`;
   }
@@ -1516,19 +1528,22 @@ function renderOptReview() {
 
 function renderOptSugg(days) {
   if (opt.suggBusy) return `<div class="opt-warn">⏳ Looking for good spots near your hotel (OpenStreetMap)…</div>`;
-  if (opt.sugg === "error") return `<div class="opt-warn">😕 Couldn't load suggestions right now — try again in a moment.</div><button class="btn" id="optSuggest" style="width:100%">🍳 Retry suggestions</button>`;
-  if (!opt.sugg) return `<button class="btn" id="optSuggest" style="width:100%">🍳 Suggest nearby breakfast / lunch / dinner spots</button>`;
+  if (opt.sugg === "error") return `<div class="opt-warn">😕 Couldn't load suggestions right now — try again in a moment.</div><button class="btn" id="optSuggest" style="width:100%">🍳 Retry recommendations</button>`;
+  if (!opt.sugg) return `<button class="btn" id="optSuggest" style="width:100%;margin-top:4px">🍳 Recommend breakfast / lunch / dinner spots near the hotel</button>`;
   const taken = new Set(opt.places.map(p => p.name.toLowerCase()));
+  const city = $("optCity").value.trim();
   let html = "";
   OPT_MEALS.forEach(m => {
     const need = days - opt.places.filter(p => p.category === m && p.status === "ok").length;
-    if (need <= 0) return;
     const list = opt.sugg[m] || [];
-    html += `<div class="opt-sug-h">${catStyle(m).emoji} ${m} — need ${need} more, tap to add:</div><div>`;
+    html += `<div class="opt-sug-h">${catStyle(m).emoji} ${m} — ${need > 0 ? `need ${need} more, tap to add` : "covered — more ideas"}. ▶ checks it on TikTok:</div><div>`;
     if (!list.length) html += `<span class="sub">Nothing found near the hotel — add one by name above.</span>`;
     list.forEach((sg, i) => {
       const dup = taken.has(sg.name.toLowerCase());
-      html += `<button class="opt-sug" data-osug="${m}:${i}" ${dup ? "disabled" : ""}>＋ ${esc(sg.name)} · ${sg.d < 1 ? Math.round(sg.d * 1000) + " m" : sg.d.toFixed(1) + " km"}</button>`;
+      html += `<span style="display:inline-flex;align-items:center;gap:4px;margin:0 8px 6px 0">
+        <button class="opt-sug" style="margin:0" data-osug="${m}:${i}" ${dup ? "disabled" : ""}>＋ ${esc(sg.name)} · ${sg.d < 1 ? Math.round(sg.d * 1000) + " m" : sg.d.toFixed(1) + " km"}</button>
+        <button class="mini tt" data-ostt="${esc(sg.name + (city ? " " + city : ""))}" title="See it on TikTok" aria-label="See ${esc(sg.name)} on TikTok">▶</button>
+      </span>`;
     });
     html += `</div>`;
   });
@@ -1726,16 +1741,25 @@ function optApply() {
     t.days[i].stops = d.stops;
     t.days[i].title = "Optimized day";
   });
-  activeDay = 0; save(); closeOpt(); render();
+  activeDay = 0;
+  editing = true; // land in edit mode so stops can be added / removed / reordered right away
+  save(); closeOpt(); render();
+  window.scrollTo(0, 0);
 }
 
 function openOpt() {
   const t = curTrip(); if (!t) return;
+  if (opt.tripId !== t.id) { // fresh planner state when switching trips
+    opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false, tripId: t.id };
+    $("optInput").value = "";
+    renderOptReview(); renderOptPlan();
+  }
   $("optCity").value = t.destination || "";
   $("optDays").value = t.days.length;
   $("optDays").max = t.days.length;
   $("optHotelName").value = t.hotel ? (t.hotel.name || "") : "";
   $("optHotelLoc").value = "";
+  renderGImport();
   $("optSheet").classList.remove("hidden");
   $("optSheet").scrollTop = 0;
 }
@@ -1753,6 +1777,8 @@ $("optReview").addEventListener("click", e => {
   }
   const del = e.target.closest("[data-odel]");
   if (del) { opt.places.splice(+del.dataset.odel, 1); renderOptReview(); return; }
+  const stt = e.target.closest("[data-ostt]");
+  if (stt) { openTikTok(stt.dataset.ostt); return; }
   const sug = e.target.closest("[data-osug]");
   if (sug && !sug.disabled) {
     const [m, i] = sug.dataset.osug.split(":");
@@ -1915,6 +1941,127 @@ function importData(file) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Google sign-in (Supabase OAuth)                                    */
+/* ------------------------------------------------------------------ */
+const SUPABASE_URL = "https://fskujzurzqjncvfrqxlr.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZza3VqenVyenFqbmN2ZnJxeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTk0NjYsImV4cCI6MjA5OTA5NTQ2Nn0.TNFYgZcygfmd4FvNlrzNwFmoUqNVuX8M3zLfUidPcAA";
+let sb = null, sbUser = null;
+
+function initAuth() {
+  if (typeof supabase === "undefined") { renderAccount(); return; }
+  try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+  catch (e) { console.warn("Supabase init failed", e); renderAccount(); return; }
+  sb.auth.onAuthStateChange((_evt, session) => {
+    sbUser = session ? session.user : null;
+    renderAccount(); renderGImport();
+  });
+  sb.auth.getSession().then(({ data: d }) => {
+    sbUser = d.session ? d.session.user : null;
+    renderAccount(); renderGImport();
+  });
+}
+function isGoogleUser() {
+  return !!(sbUser && ((sbUser.app_metadata && sbUser.app_metadata.provider === "google") ||
+    (sbUser.identities || []).some(i => i.provider === "google")));
+}
+async function signInGoogle() {
+  if (!sb) { alert("Sign-in isn't available right now (offline or blocked)."); return; }
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: location.origin + location.pathname }
+  });
+  if (error) alert("Couldn't start Google sign-in: " + error.message);
+}
+async function signOutGoogle() {
+  if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+  sbUser = null; renderAccount(); renderGImport();
+}
+function renderAccount() {
+  const el = $("accountRow"); if (!el) return;
+  if (sbUser) {
+    const name = (sbUser.user_metadata && (sbUser.user_metadata.full_name || sbUser.user_metadata.name)) || sbUser.email || "Signed in";
+    el.innerHTML = `<span class="chip">👤 <b>${esc(name)}</b>${isGoogleUser() ? " · Google" : ""}</span><button class="mini" id="signOutBtn">Sign out</button>`;
+  } else {
+    el.innerHTML = `<button class="mini" id="gSignIn"><b>🔐 Sign in with Google</b></button><span class="sub" style="font-size:12px">to import your Maps lists</span>`;
+  }
+}
+$("accountRow").addEventListener("click", e => {
+  if (e.target.closest("#gSignIn")) signInGoogle();
+  else if (e.target.closest("#signOutBtn")) signOutGoogle();
+});
+
+/* ------------------------------------------------------------------ */
+/*  Import a Google Maps saved list (Takeout CSV)                      */
+/*  Google has no API for saved lists — the official way out is a      */
+/*  Takeout export of "Saved", one CSV per list (Title, Note, URL).    */
+/* ------------------------------------------------------------------ */
+function renderGImport() {
+  const box = $("gImport"); if (!box) return;
+  if (isGoogleUser()) {
+    box.innerHTML = `<div class="loc-box">
+      <b style="font-size:13.5px">📥 Import a Google Maps list</b>
+      <p class="sub" style="margin:6px 0 10px">Export your saved lists once at
+      <a href="https://takeout.google.com/settings/takeout/custom/saved" target="_blank" rel="noopener">Google Takeout → Saved</a>
+      (a small zip, one CSV per list), then upload the list's CSV here. Places are located automatically and
+      the house rules — hotel start/end, breakfast, lunch &amp; dinner every day — are applied when you optimize.</p>
+      <button class="btn primary" id="csvBtn" style="width:100%">⤒ Upload list CSV</button>
+    </div>`;
+  } else {
+    box.innerHTML = `<div class="loc-box">
+      <b style="font-size:13.5px">📥 Import a Google Maps list</b>
+      <p class="sub" style="margin:6px 0 10px">Sign in with Google to import a saved list — or just paste place names below.</p>
+      <button class="btn" id="optSignIn" style="width:100%">🔐 Sign in with Google</button>
+    </div>`;
+  }
+}
+function parseCSV(text) {
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    }
+    else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cur); cur = ""; }
+    else if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
+    else if (ch !== "\r") cur += ch;
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ""));
+}
+function importGoogleCsv(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const rows = parseCSV(String(reader.result || ""));
+    if (!rows.length) { alert("That CSV looked empty."); return; }
+    let start = 0, tIdx = 0, uIdx = -1;
+    const head = rows[0].map(x => x.trim().toLowerCase());
+    if (head.includes("title")) { tIdx = head.indexOf("title"); uIdx = head.indexOf("url"); start = 1; }
+    const lines = [];
+    for (let i = start; i < rows.length; i++) {
+      const r = rows[i];
+      const name = (r[tIdx] || "").trim();
+      let url = uIdx >= 0 ? (r[uIdx] || "").trim() : "";
+      if (!url) url = (r.find(c => /https?:\/\//.test(c)) || "").trim();
+      if (!name && !url) continue;
+      lines.push((name + " " + url).trim());
+    }
+    if (!lines.length) { alert("Couldn't find any places in that CSV — is it a Takeout “Saved” list export?"); return; }
+    const ta = $("optInput");
+    ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + lines.join("\n");
+    optLocateAll();
+  };
+  reader.onerror = () => alert("Couldn't read that file.");
+  reader.readAsText(file);
+}
+$("gImport").addEventListener("click", e => {
+  if (e.target.closest("#csvBtn")) $("csvFile").click();
+  else if (e.target.closest("#optSignIn")) signInGoogle();
+});
+$("csvFile").addEventListener("change", e => { if (e.target.files[0]) importGoogleCsv(e.target.files[0]); e.target.value = ""; });
+
+/* ------------------------------------------------------------------ */
 /*  Events                                                             */
 /* ------------------------------------------------------------------ */
 $("tripSections").addEventListener("click", e => {
@@ -2033,6 +2180,9 @@ setInterval(() => {
 }, 60000);
 
 render();
+renderAccount();
+renderGImport();
+initAuth();
 </script>
 </body>
 </html>
