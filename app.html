@@ -1485,11 +1485,19 @@ async function optGeocode(name) {
   }
   let hit = null;
   if (GP_KEY) {
+    opt.searchService = "checking-google";
+    if (opt.busy) renderOptReview();
     opt._osm = false; // Google isn't rate-limited like Nominatim — no 1s pacing needed
     hit = await googleGeocode(q);
     if (hit && !nearCity(hit)) { diagBump("Google", "wrong city"); hit = null; }
-    if (hit) return hit;
+    if (hit) {
+      opt.searchService = "google";
+      if (opt.busy) renderOptReview();
+      return hit;
+    }
   }
+  opt.searchService = "openstreetmap";
+  if (opt.busy) renderOptReview();
   opt._osm = true;
   try {
     const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
@@ -1705,7 +1713,9 @@ async function optLocateAll() {
   if (opt.busy) return;
   const lines = $("optInput").value.split(/\r?\n/).map(optParseLine).filter(Boolean);
   if (!lines.length) { alert("Paste at least one place first — one per line."); return; }
-  opt.places = lines; opt.plan = null; opt.sugg = null; opt.hotel = null; opt.diag = {}; opt._osm = true; renderOptPlan();
+  opt.places = lines; opt.plan = null; opt.sugg = null; opt.hotel = null; opt.diag = {}; opt._osm = true;
+  opt.searchService = GP_KEY ? "checking-google" : "openstreetmap";
+  renderOptPlan();
   opt.busy = true; renderOptReview();
   // Nominatim asks for ≤ 1 request/sec; Google-keyed lookups don't need pacing.
   const wait = () => new Promise(res => setTimeout(res, opt._osm ? 1100 : 150));
@@ -1872,7 +1882,10 @@ function renderOptReview() {
       easily covers this) and tap “Find these places” again.</div>`;
   }
   if (opt.busy) {
-    html += `<div class="opt-warn">⏳ Locating your places${GP_KEY ? " (Google Places)" : " (free OpenStreetMap search, about one per second)"}…</div>`;
+    const svc = opt.searchService === "google" ? "Google Places"
+      : opt.searchService === "checking-google" ? "checking Google Places"
+      : "OpenStreetMap fallback, about one per second";
+    html += `<div class="opt-warn">⏳ Locating your places (${svc})…</div>`;
   } else if (missing.length) {
     html += `<div class="opt-warn">🍽️ <b>House rule:</b> breakfast, lunch &amp; dinner every day. For <b>${days} day${days > 1 ? "s" : ""}</b> you still need ${missing.join(", ")} — add lines above, tap a category chip to retag a place, or use the recommendations below.</div>`;
   } else {
