@@ -391,6 +391,10 @@
 <div class="modal hidden" id="modal">
   <div class="modal-card">
     <div class="modal-head"><h3 id="modalTitle">Edit stop</h3><button class="icon-btn" id="fClose" aria-label="Close">✕</button></div>
+    <div class="field"><label>Quick search — fills name &amp; location</label>
+      <div style="display:flex;gap:8px"><input id="f-search" placeholder="Search a place…" autocomplete="off" style="flex:1"/><button class="btn" id="fSearchGo" type="button">🔎</button></div>
+      <div id="fSearchRes"></div>
+    </div>
     <div class="field"><label>Time</label><input id="f-time" placeholder="e.g. 14:00 or Late" autocomplete="off"/></div>
     <div class="field"><label>Name</label><input id="f-title" placeholder="Place name" autocomplete="off"/></div>
     <div class="field"><label>Category</label><input id="f-category" list="catlist" placeholder="Sight, Lunch, Museum…" autocomplete="off"/>
@@ -469,6 +473,14 @@
       This plans the whole trip: places are clustered into days, ordered to minimise walking, and every day
       starts &amp; ends at your hotel with a breakfast, a lunch and a dinner.
     </p>
+    <div class="loc-box" id="psBox">
+      <b style="font-size:13.5px">🔎 Search &amp; add places</b>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input id="psQ" placeholder="e.g. Bistrot Victoires" autocomplete="off" style="flex:1;font:inherit;font-size:15px;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:#fff"/>
+        <button class="btn primary" id="psGo" type="button">Search</button>
+      </div>
+      <div id="psResults"></div>
+    </div>
     <div id="gImport"></div>
     <p class="sub">
       Or paste places by hand — <b>one per line</b>. A line can also include a full Maps link
@@ -1071,6 +1083,9 @@ function openModal(stopIndex, insertAt) {
   $("f-lng").value = st && st.lng != null ? st.lng : "";
   $("f-paste").value = "";
   $("f-paste").style.borderColor = "";
+  $("f-search").value = "";
+  msState = { results: null, busy: false, error: null };
+  $("fSearchRes").innerHTML = "";
   $("fDelete").classList.toggle("hidden", isNew);
   $("modal").classList.remove("hidden");
   fitModal($("modal"));
@@ -1488,6 +1503,131 @@ async function optGeocode(name) {
   return hit;
 }
 
+/* ---- In-app place search: Google Places Text Search when a key is set
+   (names, addresses, ratings), Photon otherwise (no ratings). ---- */
+function rateStr(r) {
+  if (r.rating == null) return "";
+  return ` · ${(+r.rating).toFixed(1)}★${r.ratings ? ` (${r.ratings >= 1000 ? (r.ratings / 1000).toFixed(1) + "k" : r.ratings})` : ""}`;
+}
+async function searchPlaces(q) {
+  const t = curTrip();
+  const dest = t ? (t.destination || "") : "";
+  const qq = dest && !q.toLowerCase().includes(dest.toLowerCase()) ? q + ", " + dest : q;
+  const bias = (opt.city && opt.tripId === (t && t.id)) ? { lat: opt.city.lat, lng: opt.city.lng }
+    : (t && t.hotel && t.hotel.lat != null ? { lat: t.hotel.lat, lng: t.hotel.lng } : null);
+  if (GP_KEY) {
+    try {
+      const body = { textQuery: qq, pageSize: 5 };
+      if (bias) body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: 30000 } };
+      const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount" },
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) return { error: "Google search failed (HTTP " + r.status + ")" };
+      const j = await r.json();
+      return { results: (j.places || []).map(p => ({
+        name: (p.displayName && p.displayName.text) || q,
+        addr: p.formattedAddress || "",
+        lat: p.location && p.location.latitude, lng: p.location && p.location.longitude,
+        rating: p.rating, ratings: p.userRatingCount
+      })).filter(x => x.lat != null) };
+    } catch (e) { return { error: "Google search unreachable — check the network / ad-blocker" }; }
+  }
+  try {
+    let u = "https://photon.komoot.io/api/?limit=5&q=" + encodeURIComponent(qq);
+    if (bias) u += "&lat=" + bias.lat + "&lon=" + bias.lng;
+    const r = await fetch(u);
+    if (!r.ok) return { error: "Search failed (HTTP " + r.status + ")" };
+    const j = await r.json();
+    return { results: (j.features || []).map(f => {
+      const pr = f.properties || {};
+      return {
+        name: pr.name || q,
+        addr: [pr.street, pr.city || pr.county, pr.country].filter(Boolean).join(", "),
+        lat: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[1],
+        lng: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[0]
+      };
+    }).filter(x => x.lat != null) };
+  } catch (e) { return { error: "Search unreachable — check the network / ad-blocker (or add a Google Places key)" }; }
+}
+
+/* Planner search box → add straight to the places list */
+let psState = { results: null, busy: false, error: null };
+function renderPsResults() {
+  const box = $("psResults"); if (!box) return;
+  if (psState.busy) { box.innerHTML = `<p class="sub" style="margin:10px 0 0">⏳ Searching…</p>`; return; }
+  if (psState.error) { box.innerHTML = `<p class="sub" style="margin:10px 0 0">⚠️ ${esc(psState.error)}</p>`; return; }
+  if (!psState.results) { box.innerHTML = ""; return; }
+  if (!psState.results.length) { box.innerHTML = `<p class="sub" style="margin:10px 0 0">No matches — try adding the street or district.</p>`; return; }
+  const taken = new Set(opt.places.map(p => p.name.toLowerCase()));
+  box.innerHTML = psState.results.map((r, i) => `<div class="opt-row">
+    <span class="opt-name">${esc(r.name)}<small>${esc(r.addr)}${esc(rateStr(r))}</small></span>
+    <button class="mini tt" type="button" data-pstt="${i}" title="See it on TikTok">▶</button>
+    <button class="opt-sug" style="margin:0" data-psadd="${i}" ${taken.has(r.name.toLowerCase()) ? "disabled" : ""}>＋ Add</button>
+  </div>`).join("");
+}
+async function runPlaceSearch() {
+  const q = $("psQ").value.trim(); if (!q) { $("psQ").focus(); return; }
+  psState = { results: null, busy: true, error: null }; renderPsResults();
+  const out = await searchPlaces(q);
+  psState = { results: out.results || null, busy: false, error: out.error || null };
+  renderPsResults();
+}
+$("psGo").addEventListener("click", runPlaceSearch);
+$("psQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); runPlaceSearch(); } });
+$("psResults").addEventListener("click", e => {
+  const tt = e.target.closest("[data-pstt]");
+  if (tt) {
+    const r = psState.results[+tt.dataset.pstt];
+    const t = curTrip();
+    if (r) openTikTok(r.name + " " + (t ? t.destination || "" : ""));
+    return;
+  }
+  const add = e.target.closest("[data-psadd]");
+  if (add && !add.disabled) {
+    const r = psState.results[+add.dataset.psadd];
+    if (r && !opt.places.some(p => p.name.toLowerCase() === r.name.toLowerCase())) {
+      opt.places.push({ name: r.name, category: optGuessCat(r.name), lat: r.lat, lng: r.lng, status: "ok", rating: r.rating });
+      renderOptReview();
+    }
+    renderPsResults();
+  }
+});
+
+/* Stop-modal search → fills name + coordinates */
+let msState = { results: null, busy: false, error: null };
+function renderMsResults() {
+  const box = $("fSearchRes"); if (!box) return;
+  if (msState.busy) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">⏳ Searching…</p>`; return; }
+  if (msState.error) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">⚠️ ${esc(msState.error)}</p>`; return; }
+  if (!msState.results) { box.innerHTML = ""; return; }
+  if (!msState.results.length) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">No matches.</p>`; return; }
+  box.innerHTML = msState.results.map((r, i) => `<div class="opt-row">
+    <span class="opt-name">${esc(r.name)}<small>${esc(r.addr)}${esc(rateStr(r))}</small></span>
+    <button class="opt-sug" style="margin:0" data-mspick="${i}">Use</button>
+  </div>`).join("");
+}
+async function runModalSearch() {
+  const q = $("f-search").value.trim(); if (!q) { $("f-search").focus(); return; }
+  msState = { results: null, busy: true, error: null }; renderMsResults();
+  const out = await searchPlaces(q);
+  msState = { results: out.results || null, busy: false, error: out.error || null };
+  renderMsResults();
+}
+$("fSearchGo").addEventListener("click", runModalSearch);
+$("f-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); runModalSearch(); } });
+$("fSearchRes").addEventListener("click", e => {
+  const pick = e.target.closest("[data-mspick]"); if (!pick) return;
+  const r = msState.results[+pick.dataset.mspick]; if (!r) return;
+  $("f-title").value = r.name;
+  $("f-lat").value = r.lat; $("f-lng").value = r.lng;
+  if (!$("f-category").value.trim()) $("f-category").value = optGuessCat(r.name);
+  msState = { results: null, busy: false, error: null };
+  $("f-search").value = "";
+  renderMsResults();
+});
+
 /* Home base: pasted coords → geocoded hotel → the trip's saved hotel →
    middle of the located places → city centre. */
 function optHotelCoords() {
@@ -1535,30 +1675,65 @@ async function optLocateAll() {
   opt.busy = false; renderOptReview();
 }
 
+/* Recommendations near the hotel. With a Google key: Places Nearby Search,
+   sorted by rating (so chips show real Google Maps ratings). Without: free
+   OpenStreetMap Overpass data, sorted by distance, no ratings. */
+async function gNearby(c, types) {
+  const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.displayName,places.location,places.rating,places.userRatingCount" },
+    body: JSON.stringify({
+      includedTypes: types, maxResultCount: 15, rankPreference: "POPULARITY",
+      locationRestriction: { circle: { center: { latitude: c.lat, longitude: c.lng }, radius: 1500 } }
+    })
+  });
+  if (!r.ok) throw new Error("google nearby " + r.status);
+  return ((await r.json()).places || []);
+}
+function mapNearby(places, breakfast, c) {
+  const seen = new Set(), out = [];
+  places.forEach(p => {
+    const name = p.displayName && p.displayName.text;
+    const lat = p.location && p.location.latitude, lng = p.location && p.location.longitude;
+    if (!name || lat == null) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ name, lat, lng, breakfast, d: optDist({ lat, lng }, c), rating: p.rating, ratings: p.userRatingCount });
+  });
+  out.sort((a, b) => (b.rating || 0) - (a.rating || 0) || a.d - b.d);
+  return out.slice(0, 8);
+}
 async function optSuggest() {
   if (opt.suggBusy) return;
   opt.suggBusy = true; renderOptReview();
   const c = optHotelCoords();
-  const around = r => `(around:${r},${c.lat.toFixed(5)},${c.lng.toFixed(5)})`;
-  const q = `[out:json][timeout:20];(nwr["amenity"="cafe"]["name"]${around(1500)};nwr["shop"="bakery"]["name"]${around(1500)};nwr["amenity"="restaurant"]["name"]${around(1500)};);out center 120;`;
   try {
-    const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q));
-    if (!r.ok) throw new Error("overpass " + r.status);
-    const j = await r.json();
-    const seen = new Set();
-    const items = (j.elements || []).map(el => {
-      const lat = el.lat != null ? el.lat : el.center && el.center.lat;
-      const lng = el.lon != null ? el.lon : el.center && el.center.lon;
-      const name = el.tags && el.tags.name;
-      if (lat == null || lng == null || !name) return null;
-      const key = name.toLowerCase();
-      if (seen.has(key)) return null;
-      seen.add(key);
-      const breakfast = (el.tags.amenity === "cafe" || el.tags.shop === "bakery");
-      return { name, lat, lng, breakfast, d: optDist({ lat, lng }, c) };
-    }).filter(Boolean).sort((a, b) => a.d - b.d);
-    const rest = items.filter(x => !x.breakfast).slice(0, 8);
-    opt.sugg = { Breakfast: items.filter(x => x.breakfast).slice(0, 8), Lunch: rest, Dinner: rest };
+    if (GP_KEY) {
+      const bf = await gNearby(c, ["cafe", "bakery", "coffee_shop"]);
+      const rest = mapNearby(await gNearby(c, ["restaurant"]), false, c);
+      opt.sugg = { Breakfast: mapNearby(bf, true, c), Lunch: rest, Dinner: rest };
+    } else {
+      const around = r => `(around:${r},${c.lat.toFixed(5)},${c.lng.toFixed(5)})`;
+      const q = `[out:json][timeout:20];(nwr["amenity"="cafe"]["name"]${around(1500)};nwr["shop"="bakery"]["name"]${around(1500)};nwr["amenity"="restaurant"]["name"]${around(1500)};);out center 120;`;
+      const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q));
+      if (!r.ok) throw new Error("overpass " + r.status);
+      const j = await r.json();
+      const seen = new Set();
+      const items = (j.elements || []).map(el => {
+        const lat = el.lat != null ? el.lat : el.center && el.center.lat;
+        const lng = el.lon != null ? el.lon : el.center && el.center.lon;
+        const name = el.tags && el.tags.name;
+        if (lat == null || lng == null || !name) return null;
+        const key = name.toLowerCase();
+        if (seen.has(key)) return null;
+        seen.add(key);
+        const breakfast = (el.tags.amenity === "cafe" || el.tags.shop === "bakery");
+        return { name, lat, lng, breakfast, d: optDist({ lat, lng }, c) };
+      }).filter(Boolean).sort((a, b) => a.d - b.d);
+      const rest = items.filter(x => !x.breakfast).slice(0, 8);
+      opt.sugg = { Breakfast: items.filter(x => x.breakfast).slice(0, 8), Lunch: rest, Dinner: rest };
+    }
   } catch (e) { opt.sugg = "error"; }
   opt.suggBusy = false; renderOptReview();
 }
@@ -1629,8 +1804,9 @@ function renderOptSugg(days) {
     if (!list.length) html += `<span class="sub">Nothing found near the hotel — add one by name above.</span>`;
     list.forEach((sg, i) => {
       const dup = taken.has(sg.name.toLowerCase());
+      const rate = sg.rating != null ? ` · ${(+sg.rating).toFixed(1)}★` : "";
       html += `<span style="display:inline-flex;align-items:center;gap:4px;margin:0 8px 6px 0">
-        <button class="opt-sug" style="margin:0" data-osug="${m}:${i}" ${dup ? "disabled" : ""}>＋ ${esc(sg.name)} · ${sg.d < 1 ? Math.round(sg.d * 1000) + " m" : sg.d.toFixed(1) + " km"}</button>
+        <button class="opt-sug" style="margin:0" data-osug="${m}:${i}" ${dup ? "disabled" : ""}>＋ ${esc(sg.name)}${rate} · ${sg.d < 1 ? Math.round(sg.d * 1000) + " m" : sg.d.toFixed(1) + " km"}</button>
         <button class="mini tt" data-ostt="${esc(sg.name + (city ? " " + city : ""))}" title="See it on TikTok" aria-label="See ${esc(sg.name)} on TikTok">▶</button>
       </span>`;
     });
@@ -1883,7 +2059,7 @@ $("optReview").addEventListener("click", e => {
     const sgList = opt.sugg && opt.sugg[m];
     const sg = sgList && sgList[+i];
     if (sg && !opt.places.some(p => p.name.toLowerCase() === sg.name.toLowerCase())) {
-      opt.places.push({ name: sg.name, category: m, lat: sg.lat, lng: sg.lng, status: "ok" });
+      opt.places.push({ name: sg.name, category: m, lat: sg.lat, lng: sg.lng, status: "ok", rating: sg.rating });
     }
     renderOptReview(); return;
   }
