@@ -705,6 +705,10 @@ const CATS = [
   { test: /neighbou?rhood/i,           emoji: "🏘️", color: "#ca8a04" },
   { test: /jazz|bar|cocktail|club/i,   emoji: "🍸", color: "#db2777" },
   { test: /shop/i,                     emoji: "🛍️", color: "#9333ea" },
+  { test: /entertainment|theatre|theater|cinema|concert|stadium/i, emoji: "🎭", color: "#c026d3" },
+  { test: /education|university|school/i, emoji: "🎓", color: "#4f46e5" },
+  { test: /transport|airport|station/i, emoji: "🚉", color: "#0284c7" },
+  { test: /wellness|spa|fitness/i,      emoji: "🧘", color: "#0d9488" },
   { test: /sight|church|temple|castle/i, emoji: "⛪", color: "#7c3aed" }
 ];
 function catStyle(cat) {
@@ -1361,11 +1365,11 @@ $("sheetBody").addEventListener("input", e => {
 /*  into days, order with NN + 2-opt, every day starts/ends at the     */
 /*  hotel and gets breakfast, lunch & dinner.                          */
 /* ------------------------------------------------------------------ */
-const OPT_CATS = ["Sight", "Museum", "Breakfast", "Lunch", "Dinner", "Walk / Rest", "Bar"];
+const OPT_CATS = ["Sight", "Museum", "Shopping", "Entertainment", "Education", "Transport", "Wellness", "Hotel / Stay", "Breakfast", "Lunch", "Dinner", "Walk / Rest", "Bar"];
 const OPT_MEALS = ["Breakfast", "Lunch", "Dinner"];
-const OPT_DUR = { Breakfast: 40, Lunch: 75, Dinner: 90, Museum: 120, Sight: 45, "Walk / Rest": 40, Bar: 60 };
+const OPT_DUR = { Breakfast: 40, Lunch: 75, Dinner: 90, Museum: 120, Sight: 45, Shopping: 60, Entertainment: 90, Education: 60, Transport: 20, Wellness: 75, "Hotel / Stay": 20, "Walk / Rest": 40, Bar: 60 };
 const OPT_MEAL_EARLIEST = { Lunch: 12 * 60 + 30, Dinner: 19 * 60 + 30 };
-const OPT_TAGS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", sight: "Sight", museum: "Museum", bar: "Bar", walk: "Walk / Rest" };
+const OPT_TAGS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", sight: "Sight", museum: "Museum", shopping: "Shopping", entertainment: "Entertainment", education: "Education", transport: "Transport", wellness: "Wellness", hotel: "Hotel / Stay", bar: "Bar", walk: "Walk / Rest" };
 let opt = { places: [], plan: null, busy: false, city: null, cityCache: {}, hotel: null, sugg: null, suggBusy: false, starts: {} };
 
 /* One "head out at" time per day — friendlier than a single global start
@@ -1401,17 +1405,48 @@ function optCategoryFromTypes(types) {
   if (/bakery|cafe|coffee_shop|breakfast/.test(s)) return "Breakfast";
   if (/restaurant|fast_food|food_court|bistro|brasserie|pizzeria/.test(s)) return "Lunch";
   if (/bar|pub|night_club|wine/.test(s)) return "Bar";
+  if (/\bshop\b|store|shopping_mall|department_store|clothes|shoes|jewelry|perfume|beauty/.test(s)) return "Shopping";
+  if (/hotel|hostel|motel|lodging|guest_house|resort|campground/.test(s)) return "Hotel / Stay";
   if (/museum|gallery|artwork/.test(s)) return "Museum";
+  if (/theatre|theater|cinema|concert|opera|amusement|aquarium|zoo|stadium/.test(s)) return "Entertainment";
+  if (/university|college|school|library/.test(s)) return "Education";
+  if (/airport|train_station|bus_station|transit_station|subway|ferry|transport|car_rental/.test(s)) return "Transport";
+  if (/spa|gym|fitness|hospital|clinic|wellness/.test(s)) return "Wellness";
   if (/park|garden|nature_reserve|picnic|beach/.test(s)) return "Walk / Rest";
-  if (/tourist_attraction|monument|memorial|place_of_worship|castle|viewpoint/.test(s)) return "Sight";
+  if (/tourist_attraction|historical_landmark|historical_place|landmark|monument|memorial|place_of_worship|castle|palace|viewpoint/.test(s)) return "Sight";
   return null;
+}
+
+function optNormName(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+/* Rank multiple provider hits instead of blindly trusting result #1. Weak
+   fuzzy matches are rejected; asking the user to refine a name is safer than
+   silently routing them to a different business on another continent. */
+function optMatchScore(query, candidate) {
+  const q = optNormName(String(query || "").split(",")[0]);
+  const c = optNormName(candidate);
+  if (!q || !c) return 0;
+  if (q === c) return 100;
+  if (c.startsWith(q + " ")) return 85;
+  const qt = new Set(q.split(" ").filter(x => x.length > 1));
+  const ct = new Set(c.split(" ").filter(x => x.length > 1));
+  let common = 0; qt.forEach(x => { if (ct.has(x)) common++; });
+  const coverage = common / Math.max(1, qt.size);
+  const precision = common / Math.max(1, ct.size);
+  return coverage >= 0.75 ? 100 * (2 * coverage * precision / (coverage + precision)) : coverage * 40;
+}
+function optBestNamed(items, query, getName) {
+  const ranked = (items || []).map(x => ({ x, score: optMatchScore(query, getName(x)) })).sort((a, b) => b.score - a.score);
+  return ranked.length && ranked[0].score >= 65 ? ranked[0].x : null;
 }
 
 function optParseLine(raw) {
   let t = raw.replace(/^\s*(?:[-•·*]|\d+[.)])\s*/, "").trim();
   if (!t) return null;
   let lat = null, lng = null, cat = null;
-  const tag = t.match(/#(breakfast|lunch|dinner|sight|museum|bar|walk)\b/i);
+  const tag = t.match(/#(breakfast|lunch|dinner|sight|museum|shopping|entertainment|education|transport|wellness|hotel|bar|walk)\b/i);
   if (tag) { cat = OPT_TAGS[tag[1].toLowerCase()]; t = (t.slice(0, tag.index) + t.slice(tag.index + tag[0].length)).trim(); }
   const url = t.match(/https?:\/\/\S+/);
   if (url) {
@@ -1464,29 +1499,29 @@ function nearCity(c) {
 }
 async function googleGeocode(q) {
   try {
-    const body = { textQuery: q, pageSize: 1 };
+    const body = { textQuery: q, pageSize: 5 };
     if (opt.city) body.locationBias = { circle: { center: { latitude: opt.city.lat, longitude: opt.city.lng }, radius: 30000 } };
     const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.location,places.primaryType,places.types" },
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.displayName,places.location,places.primaryType,places.types" },
       body: JSON.stringify(body)
     });
     if (!r.ok) { diagBump("Google", "HTTP " + r.status); return null; }
     const j = await r.json();
-    const place = j.places && j.places[0];
+    const place = optBestNamed(j.places, q, p => p.displayName && p.displayName.text);
     const loc = place && place.location;
     if (!loc) { diagBump("Google", "no match"); return null; }
-    return { lat: loc.latitude, lng: loc.longitude, category: optCategoryFromTypes([place.primaryType, ...(place.types || [])]) };
+    return { lat: loc.latitude, lng: loc.longitude, category: optCategoryFromTypes(place.primaryType) || optCategoryFromTypes(place.types || []) };
   } catch (e) { diagBump("Google", "network error"); return null; }
 }
 async function photonGeocode(name) {
   try {
-    let u = "https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(name);
+    let u = "https://photon.komoot.io/api/?limit=5&q=" + encodeURIComponent(name);
     if (opt.city) u += "&lat=" + opt.city.lat + "&lon=" + opt.city.lng; // bias results to the city
     const r = await fetch(u);
     if (!r.ok) { diagBump("Photon", "HTTP " + r.status); return null; }
     const j = await r.json();
-    const f = j && j.features && j.features[0];
+    const f = optBestNamed(j && j.features, name, x => x.properties && x.properties.name);
     if (!(f && f.geometry && f.geometry.coordinates)) { diagBump("Photon", "no match"); return null; }
     const p = f.properties || {};
     return { lat: +f.geometry.coordinates[1], lng: +f.geometry.coordinates[0], category: optCategoryFromTypes([p.osm_key, p.osm_value, p.type]) };
@@ -1516,13 +1551,14 @@ async function optGeocode(name) {
   if (opt.busy) renderOptReview();
   opt._osm = true;
   try {
-    const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=en"
+    const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=en"
       + extra + "&q=" + encodeURIComponent(q);
     const r = await fetch(url);
     if (!r.ok) diagBump("OpenStreetMap", "HTTP " + r.status);
     else {
       const j = await r.json();
-      if (j && j.length) hit = { lat: +j[0].lat, lng: +j[0].lon, category: optCategoryFromTypes([j[0].category, j[0].type, j[0].addresstype]) };
+      const best = optBestNamed(j, q, x => x.name || String(x.display_name || "").split(",")[0]);
+      if (best) hit = { lat: +best.lat, lng: +best.lon, category: optCategoryFromTypes([best.category, best.type, best.addresstype]) };
       else diagBump("OpenStreetMap", "no match");
     }
   } catch (e) { diagBump("OpenStreetMap", "network error"); }
@@ -1563,7 +1599,7 @@ async function searchPlaces(q) {
           addr: p.formattedAddress || "",
           lat: p.location && p.location.latitude, lng: p.location && p.location.longitude,
           rating: p.rating, ratings: p.userRatingCount,
-          category: optCategoryFromTypes([p.primaryType, ...(p.types || [])])
+          category: optCategoryFromTypes(p.primaryType) || optCategoryFromTypes(p.types || [])
         })).filter(x => x.lat != null);
         if (results.length) return { results };
       }
