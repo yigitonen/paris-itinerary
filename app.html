@@ -1393,6 +1393,20 @@ function optGuessCat(name) {
   return "Sight";
 }
 
+/* Prefer provider metadata over names. Generic restaurants default to Lunch
+   and can still be retagged as Dinner with the category chip. */
+function optCategoryFromTypes(types) {
+  const s = (Array.isArray(types) ? types : [types]).filter(Boolean).join(" ").toLowerCase();
+  if (!s) return null;
+  if (/bakery|cafe|coffee_shop|breakfast/.test(s)) return "Breakfast";
+  if (/restaurant|fast_food|food_court|bistro|brasserie|pizzeria/.test(s)) return "Lunch";
+  if (/bar|pub|night_club|wine/.test(s)) return "Bar";
+  if (/museum|gallery|artwork/.test(s)) return "Museum";
+  if (/park|garden|nature_reserve|picnic|beach/.test(s)) return "Walk / Rest";
+  if (/tourist_attraction|monument|memorial|place_of_worship|castle|viewpoint/.test(s)) return "Sight";
+  return null;
+}
+
 function optParseLine(raw) {
   let t = raw.replace(/^\s*(?:[-•·*]|\d+[.)])\s*/, "").trim();
   if (!t) return null;
@@ -1410,7 +1424,7 @@ function optParseLine(raw) {
   t = t.replace(/[|,;:–—-]+\s*$/, "").trim();
   if (!t && lat == null) return null;
   const name = t || "Pinned place";
-  return { name, category: cat || optGuessCat(name), lat, lng, status: lat != null ? "ok" : "todo" };
+  return { name, category: cat || optGuessCat(name), categoryLocked: !!cat, lat, lng, status: lat != null ? "ok" : "todo" };
 }
 
 async function optResolveCity() {
@@ -1454,14 +1468,15 @@ async function googleGeocode(q) {
     if (opt.city) body.locationBias = { circle: { center: { latitude: opt.city.lat, longitude: opt.city.lng }, radius: 30000 } };
     const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.location" },
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.location,places.primaryType,places.types" },
       body: JSON.stringify(body)
     });
     if (!r.ok) { diagBump("Google", "HTTP " + r.status); return null; }
     const j = await r.json();
-    const loc = j.places && j.places[0] && j.places[0].location;
+    const place = j.places && j.places[0];
+    const loc = place && place.location;
     if (!loc) { diagBump("Google", "no match"); return null; }
-    return { lat: loc.latitude, lng: loc.longitude };
+    return { lat: loc.latitude, lng: loc.longitude, category: optCategoryFromTypes([place.primaryType, ...(place.types || [])]) };
   } catch (e) { diagBump("Google", "network error"); return null; }
 }
 async function photonGeocode(name) {
@@ -1473,7 +1488,8 @@ async function photonGeocode(name) {
     const j = await r.json();
     const f = j && j.features && j.features[0];
     if (!(f && f.geometry && f.geometry.coordinates)) { diagBump("Photon", "no match"); return null; }
-    return { lat: +f.geometry.coordinates[1], lng: +f.geometry.coordinates[0] };
+    const p = f.properties || {};
+    return { lat: +f.geometry.coordinates[1], lng: +f.geometry.coordinates[0], category: optCategoryFromTypes([p.osm_key, p.osm_value, p.type]) };
   } catch (e) { diagBump("Photon", "network error"); return null; }
 }
 async function optGeocode(name) {
@@ -1506,7 +1522,7 @@ async function optGeocode(name) {
     if (!r.ok) diagBump("OpenStreetMap", "HTTP " + r.status);
     else {
       const j = await r.json();
-      if (j && j.length) hit = { lat: +j[0].lat, lng: +j[0].lon };
+      if (j && j.length) hit = { lat: +j[0].lat, lng: +j[0].lon, category: optCategoryFromTypes([j[0].category, j[0].type, j[0].addresstype]) };
       else diagBump("OpenStreetMap", "no match");
     }
   } catch (e) { diagBump("OpenStreetMap", "network error"); }
@@ -1537,7 +1553,7 @@ async function searchPlaces(q) {
       if (bias) body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: 30000 } };
       const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount" },
+        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GP_KEY, "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.primaryType,places.types" },
         body: JSON.stringify(body)
       });
       if (r.ok) {
@@ -1546,7 +1562,8 @@ async function searchPlaces(q) {
           name: (p.displayName && p.displayName.text) || q,
           addr: p.formattedAddress || "",
           lat: p.location && p.location.latitude, lng: p.location && p.location.longitude,
-          rating: p.rating, ratings: p.userRatingCount
+          rating: p.rating, ratings: p.userRatingCount,
+          category: optCategoryFromTypes([p.primaryType, ...(p.types || [])])
         })).filter(x => x.lat != null);
         if (results.length) return { results };
       }
@@ -1567,7 +1584,8 @@ async function searchPlaces(q) {
           name: pr.name || q,
           addr: [pr.street, pr.city || pr.county, pr.country].filter(Boolean).join(", "),
           lat: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[1],
-          lng: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[0]
+          lng: f.geometry && f.geometry.coordinates && +f.geometry.coordinates[0],
+          category: optCategoryFromTypes([pr.osm_key, pr.osm_value, pr.type])
         };
       }).filter(x => x.lat != null);
     }
@@ -1616,7 +1634,7 @@ $("psResults").addEventListener("click", e => {
   if (add && !add.disabled) {
     const r = psState.results[+add.dataset.psadd];
     if (r && !opt.places.some(p => p.name.toLowerCase() === r.name.toLowerCase())) {
-      opt.places.push({ name: r.name, category: optGuessCat(r.name), lat: r.lat, lng: r.lng, status: "ok", rating: r.rating });
+      opt.places.push({ name: r.name, category: r.category || optGuessCat(r.name), lat: r.lat, lng: r.lng, status: "ok", rating: r.rating });
       renderOptReview();
     }
     renderPsResults();
@@ -1650,7 +1668,7 @@ $("fSearchRes").addEventListener("click", e => {
   const r = msState.results[+pick.dataset.mspick]; if (!r) return;
   $("f-title").value = r.name;
   $("f-lat").value = r.lat; $("f-lng").value = r.lng;
-  if (!$("f-category").value.trim()) $("f-category").value = optGuessCat(r.name);
+  if (!$("f-category").value.trim()) $("f-category").value = r.category || optGuessCat(r.name);
   msState = { results: null, busy: false, error: null };
   $("f-search").value = "";
   renderMsResults();
@@ -1735,7 +1753,10 @@ async function optLocateAll() {
     p.status = "loading"; renderOptReview();
     try {
       const c = await optGeocode(p.name);
-      if (c) { p.lat = c.lat; p.lng = c.lng; p.status = "ok"; } else p.status = "miss";
+      if (c) {
+        p.lat = c.lat; p.lng = c.lng; p.status = "ok";
+        if (c.category && !p.categoryLocked) p.category = c.category;
+      } else p.status = "miss";
     } catch (e) { p.status = "miss"; }
     renderOptReview();
   }
