@@ -1590,6 +1590,7 @@ async function searchPlaces(q) {
   const qq = dest && !q.toLowerCase().includes(dest.toLowerCase()) ? q + ", " + dest : q;
   const bias = (opt.city && opt.tripId === (t && t.id)) ? { lat: opt.city.lat, lng: opt.city.lng }
     : (t && t.hotel && t.hotel.lat != null ? { lat: t.hotel.lat, lng: t.hotel.lng } : null);
+  let note = null; // why Google didn't answer — shown above the fallback results
   if (GP_KEY) {
     try {
       const body = { textQuery: qq, pageSize: 5 };
@@ -1609,10 +1610,15 @@ async function searchPlaces(q) {
           category: optCategoryFromTypes(p.primaryType) || optCategoryFromTypes(p.types || [])
         })).filter(x => x.lat != null);
         if (results.length) return { results };
+      } else {
+        // Surface Google's own explanation — it names the exact problem
+        // ("Places API (New) has not been enabled", key restriction, billing…).
+        const j = await r.json().catch(() => null);
+        note = "Google search failed (HTTP " + r.status + ")"
+          + (j && j.error && j.error.message ? " — " + j.error.message : "");
       }
-      // Continue to Photon below on HTTP errors (including invalid/restricted
-      // API keys) and on an empty Google result.
-    } catch (e) { /* Google unavailable: continue to the free fallback. */ }
+      // Continue to Photon below on HTTP errors and on an empty Google result.
+    } catch (e) { note = "Google search unreachable — network or ad-blocker"; }
   }
   try {
     async function photonSearch(query) {
@@ -1637,8 +1643,8 @@ async function searchPlaces(q) {
     // valid POI query into zero matches (for example "Louvre, testing").
     // Retry the user's exact query before reporting that nothing was found.
     if (!results.length && qq !== q) results = await photonSearch(q);
-    return { results };
-  } catch (e) { return { error: "Search unreachable — check the network / ad-blocker (or add a Google Places key)" }; }
+    return { results, note };
+  } catch (e) { return { note, error: (note ? note + ". " : "") + "Fallback search also unreachable — check the network / ad-blocker" }; }
 }
 
 /* Planner search box → add straight to the places list */
@@ -1646,11 +1652,12 @@ let psState = { results: null, busy: false, error: null };
 function renderPsResults() {
   const box = $("psResults"); if (!box) return;
   if (psState.busy) { box.innerHTML = `<p class="sub" style="margin:10px 0 0">⏳ Searching…</p>`; return; }
+  const noteLine = psState.note ? `<p class="sub" style="margin:10px 0 0">⚠️ ${esc(psState.note)}. Showing free OpenStreetMap results instead (no ratings).</p>` : "";
   if (psState.error) { box.innerHTML = `<p class="sub" style="margin:10px 0 0">⚠️ ${esc(psState.error)}</p>`; return; }
-  if (!psState.results) { box.innerHTML = ""; return; }
-  if (!psState.results.length) { box.innerHTML = `<p class="sub" style="margin:10px 0 0">No matches — try adding the street or district.</p>`; return; }
+  if (!psState.results) { box.innerHTML = noteLine; return; }
+  if (!psState.results.length) { box.innerHTML = noteLine + `<p class="sub" style="margin:10px 0 0">No matches — try adding the street or district.</p>`; return; }
   const taken = new Set(opt.places.map(p => p.name.toLowerCase()));
-  box.innerHTML = psState.results.map((r, i) => `<div class="opt-row">
+  box.innerHTML = noteLine + psState.results.map((r, i) => `<div class="opt-row">
     <span class="opt-name">${esc(r.name)}<small>${esc(r.addr)}${esc(rateStr(r))}</small></span>
     <button class="mini tt" type="button" data-pstt="${i}" title="See it on TikTok">▶</button>
     <button class="opt-sug" style="margin:0" data-psadd="${i}" ${taken.has(r.name.toLowerCase()) ? "disabled" : ""}>＋ Add</button>
@@ -1658,9 +1665,9 @@ function renderPsResults() {
 }
 async function runPlaceSearch() {
   const q = $("psQ").value.trim(); if (!q) { $("psQ").focus(); return; }
-  psState = { results: null, busy: true, error: null }; renderPsResults();
+  psState = { results: null, busy: true, error: null, note: null }; renderPsResults();
   const out = await searchPlaces(q);
-  psState = { results: out.results || null, busy: false, error: out.error || null };
+  psState = { results: out.results || null, busy: false, error: out.error || null, note: out.note || null };
   renderPsResults();
 }
 $("psGo").addEventListener("click", runPlaceSearch);
@@ -1689,19 +1696,20 @@ let msState = { results: null, busy: false, error: null };
 function renderMsResults() {
   const box = $("fSearchRes"); if (!box) return;
   if (msState.busy) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">⏳ Searching…</p>`; return; }
+  const noteLine = msState.note ? `<p class="sub" style="margin:8px 0 0">⚠️ ${esc(msState.note)}. Showing free OpenStreetMap results instead.</p>` : "";
   if (msState.error) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">⚠️ ${esc(msState.error)}</p>`; return; }
-  if (!msState.results) { box.innerHTML = ""; return; }
-  if (!msState.results.length) { box.innerHTML = `<p class="sub" style="margin:8px 0 0">No matches.</p>`; return; }
-  box.innerHTML = msState.results.map((r, i) => `<div class="opt-row">
+  if (!msState.results) { box.innerHTML = noteLine; return; }
+  if (!msState.results.length) { box.innerHTML = noteLine + `<p class="sub" style="margin:8px 0 0">No matches.</p>`; return; }
+  box.innerHTML = noteLine + msState.results.map((r, i) => `<div class="opt-row">
     <span class="opt-name">${esc(r.name)}<small>${esc(r.addr)}${esc(rateStr(r))}</small></span>
     <button class="opt-sug" style="margin:0" data-mspick="${i}">Use</button>
   </div>`).join("");
 }
 async function runModalSearch() {
   const q = $("f-search").value.trim(); if (!q) { $("f-search").focus(); return; }
-  msState = { results: null, busy: true, error: null }; renderMsResults();
+  msState = { results: null, busy: true, error: null, note: null }; renderMsResults();
   const out = await searchPlaces(q);
-  msState = { results: out.results || null, busy: false, error: out.error || null };
+  msState = { results: out.results || null, busy: false, error: out.error || null, note: out.note || null };
   renderMsResults();
 }
 $("fSearchGo").addEventListener("click", runModalSearch);
