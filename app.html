@@ -260,7 +260,9 @@
   .stop.now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow); }
   .now-pill { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; }
   .now-bar { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; background: var(--accent-soft); border: 1px solid #cfe0ff; color: #1b48b3; border-radius: 12px; padding: 9px 12px; font-size: 13px; margin-top: 2px; }
-  .now-bar .btn { padding: 7px 10px; font-size: 12.5px; margin-left: auto; }
+  .now-bar .btn { padding: 7px 10px; font-size: 12.5px; }
+  .late-btns { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; align-items: center; }
+  .late-lbl { font-weight: 700; font-size: 12px; }
 
   /* ---------- Booked chip ---------- */
   .booked { background: var(--good-soft); border: 1px solid var(--good-line); color: var(--good); border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
@@ -1000,7 +1002,14 @@ function renderDayMeta() {
       (routeUrl ? `<a class="btn wide" href="${routeUrl}" target="_blank" rel="noopener">↗ Whole day in Google Maps</a>` : "") +
     `</div>` +
     (nowStopIdx != null
-      ? `<div class="now-bar">● Around <b>&nbsp;stop ${nowStopIdx + 1}&nbsp;</b> right now<button class="btn" id="shiftBtn">🕐 Running late? +30 min</button></div>`
+      ? `<div class="now-bar">● Around <b>&nbsp;stop ${nowStopIdx + 1}&nbsp;</b> right now
+           <span class="late-btns"><span class="late-lbl">🕐 Late?</span>
+             <button class="btn" data-shift="15">+15</button>
+             <button class="btn" data-shift="30">+30</button>
+             <button class="btn" data-shift="60">+60</button>
+             <button class="btn" data-shift="-30" title="Undo a shift / caught up">−30</button>
+             <button class="btn" data-skipstop="1" title="Drop this stop, keep later times as catch-up slack">⏭ Skip</button>
+           </span></div>`
       : "");
 }
 
@@ -2680,9 +2689,17 @@ $("dayMeta").addEventListener("click", e => {
     $("mapPanel").classList.toggle("hidden", !mapVisible);
     renderDayMeta();
     if (mapVisible) renderMap();
-  } else if (e.target.closest("#shiftBtn")) {
-    shiftTimes(curTrip().days[activeDay].stops, nowStopIdx != null ? nowStopIdx : 0, 30);
+  } else if (e.target.closest("[data-shift]")) {
+    const delta = +e.target.closest("[data-shift]").dataset.shift;
+    shiftTimes(curTrip().days[activeDay].stops, nowStopIdx != null ? nowStopIdx : 0, delta);
     save(); render();
+  } else if (e.target.closest("[data-skipstop]")) {
+    const stops = curTrip().days[activeDay].stops;
+    if (nowStopIdx == null || !stops[nowStopIdx]) return;
+    if (confirm(`Skip “${stops[nowStopIdx].title}”? It's removed from today's plan; later stops keep their times — that's your catch-up slack.`)) {
+      stops.splice(nowStopIdx, 1);
+      save(); render();
+    }
   }
 });
 
