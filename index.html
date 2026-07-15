@@ -627,22 +627,48 @@ function fmtMin(mins) {
   return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
 }
 /* Index of the stop you should be at right now — but ONLY on the actual trip day
-   for that tab (Day 1 = 15 Jul 2026, Day 2 = 16 Jul). Otherwise no "now" marker. */
+   for that tab (Day 1 = 15 Jul 2026, Day 2 = 16 Jul). Otherwise no "now" marker.
+   "Now" is PARIS wall-clock time, not the phone's timezone. */
 const TRIP_START = new Date(2026, 6, 15); // 15 July 2026 (month is 0-indexed)
-function nowStopFor(stops, dayIndex) {
-  const now = new Date();
-  const dayDate = new Date(TRIP_START);
-  dayDate.setDate(TRIP_START.getDate() + (dayIndex || 0));
-  if (now.getFullYear() !== dayDate.getFullYear() || now.getMonth() !== dayDate.getMonth() || now.getDate() !== dayDate.getDate()) {
-    return null; // not that day → don't highlight anything
+const PARIS_TZ = "Europe/Paris";
+function parisNow() {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: PARIS_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    }).formatToParts(new Date());
+    const g = t => +parts.find(p => p.type === t).value;
+    return { y: g("year"), mo: g("month"), d: g("day"), min: (g("hour") % 24) * 60 + g("minute") };
+  } catch (e) {
+    const n = new Date();
+    return { y: n.getFullYear(), mo: n.getMonth() + 1, d: n.getDate(), min: n.getHours() * 60 + n.getMinutes() };
   }
-  const cur = now.getHours() * 60 + now.getMinutes();
-  let idx = null;
+}
+/* Times in a day are read as monotonic: an entry earlier than the one before it
+   ("00:00" after "22:30") is past midnight, so it can't hog the marker all day. */
+function lastStopAtOrBefore(stops, cur) {
+  let idx = null, prev = -1, offset = 0;
   for (let i = 0; i < stops.length; i++) {
-    const t = parseMin(stops[i].time);
-    if (t != null && t <= cur) idx = i;
+    let t = parseMin(stops[i].time);
+    if (t == null) continue;
+    t += offset;
+    if (t < prev) { offset += 1440; t += 1440; }
+    if (t <= cur) idx = i;
+    prev = t;
   }
   return idx;
+}
+function nowStopFor(stops, dayIndex) {
+  const now = parisNow();
+  const dayDate = new Date(TRIP_START);
+  dayDate.setDate(TRIP_START.getDate() + (dayIndex || 0));
+  const same = dt => now.y === dt.getFullYear() && now.mo === dt.getMonth() + 1 && now.d === dt.getDate();
+  const next = new Date(dayDate); next.setDate(dayDate.getDate() + 1);
+  let cur = null;
+  if (same(dayDate)) cur = now.min;
+  else if (same(next) && now.min < 360) cur = now.min + 1440; // small hours still belong to this day's night plan
+  if (cur == null) return null;
+  return lastStopAtOrBefore(stops, cur);
 }
 /* Push every timed stop from fromIndex onward by delta minutes (keeps suffixes). */
 function shiftTimes(stops, fromIndex, delta) {
@@ -701,8 +727,8 @@ function sparkleTip(stop) {
 /* ------------------------------------------------------------------ */
 function daysUntil() {
   const trip = new Date(2026, 6, 15); // 15 July 2026 (month is 0-indexed)
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const now = parisNow(); // Paris calendar day, not the phone's
+  const today = new Date(now.y, now.mo - 1, now.d);
   const d = Math.round((trip - today) / 86400000);
   if (d > 1) return `${d} days until Paris ✨`;
   if (d === 1) return "1 day until Paris ✨";

@@ -565,12 +565,12 @@ function fmtRange(t) {
   return `${left}–${b.toLocaleDateString("en-GB", opts)} ${b.getFullYear()}`;
 }
 function tripStatus(t) {
-  const now = today0();
+  const now = cityToday(t); // the trip's calendar day, not the phone's
   if (now < parseISO(t.start)) return "upcoming";
   if (now > parseISO(t.end)) return "past";
   return "active";
 }
-function daysUntilTrip(t) { return Math.round((parseISO(t.start) - today0()) / 86400000); }
+function daysUntilTrip(t) { return Math.round((parseISO(t.start) - cityToday(t)) / 86400000); }
 function withPeople(t) {
   const p = t.participants || [];
   if (!p.length) return "";
@@ -635,7 +635,7 @@ function parisSeedDays() {
 }
 function defaultParisTrip() {
   return {
-    id: uid(), name: "Paris", destination: "Paris", emoji: "🗼",
+    id: uid(), name: "Paris", destination: "Paris", emoji: "🗼", tz: "Europe/Paris",
     start: "2026-07-15", end: "2026-07-16",
     participants: ["Elif", "Yiğit"],
     hotel: { name: "Hôtel Aramis Saint-Germain", lat: 48.8487, lng: 2.3263 },
@@ -652,7 +652,7 @@ function migrateParis() {
     if (!p || !Array.isArray(p.days) || !p.days.length) return null;
     const start = parseISO("2026-07-15");
     return {
-      id: uid(), name: "Paris", destination: "Paris", emoji: "🗼",
+      id: uid(), name: "Paris", destination: "Paris", emoji: "🗼", tz: "Europe/Paris",
       start: "2026-07-15", end: isoStr(addDays(start, p.days.length - 1)),
       participants: ["Elif", "Yiğit"],
       hotel: { name: "Hôtel Aramis Saint-Germain", lat: 48.8487, lng: 2.3263 },
@@ -744,17 +744,71 @@ function fmtMin(mins) {
   mins = ((mins % 1440) + 1440) % 1440;
   return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
 }
-/* Index of the stop you should be at right now — only on that day's actual date. */
-function nowStopFor(stops, dateIso) {
-  const now = new Date();
-  if (isoStr(now) !== dateIso) return null;
-  const cur = now.getHours() * 60 + now.getMinutes();
-  let idx = null;
+/* ---- Trip-local time: itinerary times are the DESTINATION's wall clock,
+   so "now" must be too (a phone on Istanbul time in Paris is an hour off). ----
+   Timezone comes from the destination name matched against the IANA zone list
+   ("Paris" → Europe/Paris); if no match, a rough longitude-based UTC offset. */
+function guessTZ(dest) {
+  try {
+    const norm = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\s_-]+/g, "");
+    const nd = norm(String(dest || "").split(",")[0]);
+    if (!nd) return null;
+    return Intl.supportedValuesOf("timeZone").find(z => norm(z.split("/").pop()) === nd) || null;
+  } catch (e) { return null; }
+}
+function tripLng(t) {
+  if (t.hotel && t.hotel.lng != null) return t.hotel.lng;
+  for (const d of t.days) for (const st of d.stops) if (st.lng != null) return st.lng;
+  return null;
+}
+function cityNow(t) {
+  const tz = t && (t.tz || (t.tz = guessTZ(t.destination)));
+  if (tz) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+      }).formatToParts(new Date());
+      const g = k => +parts.find(p => p.type === k).value;
+      return { y: g("year"), mo: g("month"), d: g("day"), min: (g("hour") % 24) * 60 + g("minute") };
+    } catch (e) { /* fall through */ }
+  }
+  const lng = t ? tripLng(t) : null;
+  if (lng != null) {
+    const u = new Date(Date.now() + Math.round(lng / 15) * 3600000);
+    return { y: u.getUTCFullYear(), mo: u.getUTCMonth() + 1, d: u.getUTCDate(), min: u.getUTCHours() * 60 + u.getUTCMinutes() };
+  }
+  const n = new Date();
+  return { y: n.getFullYear(), mo: n.getMonth() + 1, d: n.getDate(), min: n.getHours() * 60 + n.getMinutes() };
+}
+function cityToday(t) { const n = cityNow(t); return new Date(n.y, n.mo - 1, n.d); }
+
+/* Times in a day are read as monotonic: an entry earlier than the one before it
+   ("00:00" after "22:30") is past midnight, so it can't hog the marker all day. */
+function lastStopAtOrBefore(stops, cur) {
+  let idx = null, prev = -1, offset = 0;
   for (let i = 0; i < stops.length; i++) {
-    const t = parseMin(stops[i].time);
-    if (t != null && t <= cur) idx = i;
+    let t = parseMin(stops[i].time);
+    if (t == null) continue;
+    t += offset;
+    if (t < prev) { offset += 1440; t += 1440; }
+    if (t <= cur) idx = i;
+    prev = t;
   }
   return idx;
+}
+/* Index of the stop you should be at right now — only on that day's actual date
+   (in the trip's timezone), with the small hours counting as the night before. */
+function nowStopFor(t, stops, dateIso) {
+  const now = cityNow(t);
+  const day = parseISO(dateIso);
+  const next = addDays(day, 1);
+  const same = dt => now.y === dt.getFullYear() && now.mo === dt.getMonth() + 1 && now.d === dt.getDate();
+  let cur = null;
+  if (same(day)) cur = now.min;
+  else if (same(next) && now.min < 360) cur = now.min + 1440;
+  if (cur == null) return null;
+  return lastStopAtOrBefore(stops, cur);
 }
 /* Push every timed stop from fromIndex onward by delta minutes (keeps suffixes). */
 function shiftTimes(stops, fromIndex, delta) {
@@ -936,7 +990,7 @@ function renderDayMeta() {
     if (l.ok && !l.long) { walkKm += l.km; walkMin += l.min; }
   }
   const routeUrl = gDayRoute(stops);
-  nowStopIdx = nowStopFor(stops, day.date);
+  nowStopIdx = nowStopFor(t, stops, day.date);
   $("dayMeta").innerHTML =
     `<div class="day-title">${esc(day.title)}</div>` +
     `<span class="chip"><b>${stops.length}</b> stops</span>` +
@@ -1213,12 +1267,14 @@ function saveTripModal() {
     }
     t.name = name; t.destination = dest || name; t.emoji = $("t-emoji").value.trim() || t.emoji || "🌍";
     t.start = start; t.end = end; t.participants = people; t.hotel = hotel;
+    t.tz = guessTZ(t.destination); // re-derive in case the destination changed
     if (rangeChanged) rebuildDays(t);
   } else {
     const t = {
       id: uid(), name, destination: dest || name,
       emoji: $("t-emoji").value.trim() || "🌍",
-      start, end, participants: people, hotel, days: []
+      start, end, participants: people, hotel, days: [],
+      tz: guessTZ(dest || name)
     };
     rebuildDays(t);
     store.trips.push(t);
