@@ -1,4 +1,34 @@
-# Paris · 2-Day Itinerary — and Tripline
+# Roamly — social, AI-powered travel companion
+
+`index.html` is now the production-facing Roamly experience: a modern,
+mobile-first travel product with a social discovery feed, AI itinerary flow,
+day-by-day routes, groups, budget tracking, journal entries, reels, memories,
+statistics and offline/PWA support. Everything is local-first and works without
+an account for the demo.
+
+`app.html` remains the advanced route workspace. It keeps the original map,
+walking directions, editable stops, route optimiser, bookings, memories,
+recap-card export, backup/import and Google Maps-list tools. Roamly links to it
+from every trip so none of the original functionality is lost.
+
+## Run locally
+
+Serve this folder with any static file server and open `index.html`. Service
+workers require `localhost` or HTTPS; opening the file directly will still run
+the app, except for offline caching.
+
+## Data model and production handoff
+
+- The demo stores trips, expenses and journal entries in `localStorage`.
+- The AI planner currently produces deterministic city-aware itineraries in the
+  browser so the complete flow can be tested without an API key.
+- For a multi-user launch, replace local persistence with the existing Supabase
+  project, add row-level security and connect the planner submission to a secure
+  server-side model endpoint. Never place an AI or Maps secret in client code.
+- `manifest.webmanifest` and `sw.js` make the app installable and cache the app
+  shell, viewed photos and route tools for offline use.
+
+## Original Paris itinerary
 
 Two pages live here:
 

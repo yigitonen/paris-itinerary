@@ -1,0 +1,14 @@
+{
+  "name":"Roamly — Git, yaşa, hatırla",
+  "short_name":"Roamly",
+  "description":"AI seyahat planlayıcısı, günlük rota, grup, bütçe, journal ve anılar.",
+  "start_url":"./index.html",
+  "display":"standalone",
+  "background_color":"#f6f7f2",
+  "theme_color":"#1d2c23",
+  "lang":"tr",
+  "icons":[
+    {"src":"assets/icon-192.svg","sizes":"192x192","type":"image/svg+xml","purpose":"any"},
+    {"src":"assets/icon-512.svg","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
