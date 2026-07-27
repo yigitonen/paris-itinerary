@@ -1,0 +1,35 @@
+{
+  "name": "roamly-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Roamly native iOS, Android and web travel companion",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "mobile:sync": "npm run build && cap sync",
+    "mobile:android": "npm run mobile:sync && cap open android",
+    "mobile:ios": "npm run mobile:sync && cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/camera": "^8.2.1",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/geolocation": "^8.2.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.4.2",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/local-notifications": "^8.2.1",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
+    "vite": "^8.1.5"
+  }
+}

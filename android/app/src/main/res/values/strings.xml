@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Roamly</string>
+    <string name="title_activity_main">Roamly</string>
+    <string name="package_name">com.yigitonen.roamly</string>
+    <string name="custom_url_scheme">com.yigitonen.roamly</string>
+</resources>

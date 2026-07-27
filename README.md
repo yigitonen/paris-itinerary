@@ -11,6 +11,26 @@ walking directions, editable stops, route optimiser, bookings, memories,
 recap-card export, backup/import and Google Maps-list tools. Roamly links to it
 from every trip so none of the original functionality is lost.
 
+## Native iOS and Android
+
+Roamly ships as a Capacitor 8 app with the identifier
+`com.yigitonen.roamly`. The native projects live in `ios/` and `android/` and
+include camera, photo, location, local notification, share sheet, network,
+haptics, keyboard, status-bar, splash-screen and deep-link integrations.
+
+```sh
+npm install
+npm run mobile:sync
+npm run mobile:ios      # opens the Xcode project
+npm run mobile:android  # opens the Android Studio project
+```
+
+The production web bundle is generated in `dist/`; packaged travel imagery is
+included so the main experience works on a first offline launch. iOS signing
+requires Xcode and an Apple Developer team. Android release builds require Java
+21, Android Studio/SDK 36 and a private signing keystore. The remaining store
+submission steps are tracked in `STORE_RELEASE_CHECKLIST.md`.
+
 ## Run locally
 
 Serve this folder with any static file server and open `index.html`. Service
@@ -26,15 +46,12 @@ the app, except for offline caching.
   project, add row-level security and connect the planner submission to a secure
   server-side model endpoint. Never place an AI or Maps secret in client code.
 - `manifest.webmanifest` and `sw.js` make the app installable and cache the app
-  shell, viewed photos and route tools for offline use.
+  shell, packaged photos and route tools for offline use.
 
-## Original Paris itinerary
+## Advanced Paris itinerary
 
-Two pages live here:
-
-- **`index.html`** — the original mobile-friendly, editable Paris itinerary
-  (15–17 July 2026). Untouched and safe to use during the trip.
-- **`app.html` — Tripline** (working title): the generalization of the Paris page
+The original route-planning engine now lives in **`app.html`**. It is the
+generalization of the Paris page
   into a trip-tracking app — "Strava for vacations". Create a trip with a
   destination, start & end dates and whoever's going (solo, couple, or group);
   each trip gets the Paris-style day-by-day plan (day tabs, stop cards, walking

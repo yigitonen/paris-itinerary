@@ -9,8 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='28' fill='%231d2c23'/><path d='M27 67c18-8 22-25 46-34M43 31h30v30' fill='none' stroke='%23d9ff73' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>">
-  <link rel="preconnect" href="https://images.unsplash.com">
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="styles.css">
   <title>Roamly — Git, yaşa, hatırla</title>
 </head>
 <body>
@@ -36,7 +35,7 @@
         <small>Planın %72 hazır</small>
       </div>
       <button class="user-mini" data-view="profile">
-        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80" alt="Elif">
+        <img src="assets/media/elif.jpg" alt="Elif">
         <span><strong>Elif Yılmaz</strong><small>@elifgeziyor</small></span>
         <i data-lucide="chevron-right"></i>
       </button>
@@ -48,7 +47,7 @@
         <div class="top-actions">
           <button class="icon-button" data-action="search" aria-label="Ara"><i data-lucide="search"></i></button>
           <button class="icon-button notification-button" data-action="notifications" aria-label="Bildirimler"><i data-lucide="bell"></i><span></span></button>
-          <button class="avatar-button" data-view="profile" aria-label="Profil"><img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80" alt=""></button>
+          <button class="avatar-button" data-view="profile" aria-label="Profil"><img src="assets/media/elif.jpg" alt=""></button>
         </div>
       </header>
 
@@ -111,7 +110,7 @@
       <section class="view" id="view-profile" data-view-panel="profile">
         <div class="profile-cover"></div>
         <div class="profile-card">
-          <img class="profile-avatar" src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=260&q=90" alt="Elif Yılmaz">
+          <img class="profile-avatar" src="assets/media/elif.jpg" alt="Elif Yılmaz">
           <button class="secondary profile-edit"><i data-lucide="settings-2"></i> Profili düzenle</button>
           <h1>Elif Yılmaz</h1><p>@elifgeziyor · İstanbul</p>
           <div class="profile-counts"><button><strong>24</strong><span>Seyahat</span></button><button data-action="friends"><strong>386</strong><span>Arkadaş</span></button><button><strong>18.4K</strong><span>km</span></button></div>
@@ -122,7 +121,7 @@
           <button data-action="friends"><span><i data-lucide="users"></i></span><div><strong>Arkadaşlarım</strong><small>386 kişi · 8 istek</small></div><i data-lucide="chevron-right"></i></button>
           <button data-action="offline-info"><span><i data-lucide="cloud-off"></i></span><div><strong>Çevrimdışı seyahatler</strong><small>Roma cihazına indirildi</small></div><i data-lucide="chevron-right"></i></button>
           <button data-action="budget"><span><i data-lucide="wallet-cards"></i></span><div><strong>Bütçe ve para birimleri</strong><small>EUR · TRY</small></div><i data-lucide="chevron-right"></i></button>
-          <button><span><i data-lucide="shield-check"></i></span><div><strong>Gizlilik</strong><small>Konumunu kimlerin göreceğini seç</small></div><i data-lucide="chevron-right"></i></button>
+          <button data-action="privacy"><span><i data-lucide="shield-check"></i></span><div><strong>Gizlilik</strong><small>Konumunu kimlerin göreceğini seç</small></div><i data-lucide="chevron-right"></i></button>
         </div>
       </section>
 
@@ -174,7 +173,8 @@
 
   <div class="toast" id="toast" role="status"><i data-lucide="check-circle-2"></i><span></span></div>
 
-  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="main.js?v=2"></script>
+  <script vite-ignore src="assets/vendor/lucide.min.js"></script>
+  <script type="module" src="main.js"></script>
+  <script type="module" src="native.js"></script>
 </body>
 </html>
