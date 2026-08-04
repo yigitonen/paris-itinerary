@@ -8,6 +8,10 @@ function hasCoordinates(stop) {
   return Number.isFinite(stop?.lat) && Number.isFinite(stop?.lng);
 }
 
+export function isMealAnchor(stop) {
+  return ["Breakfast", "Lunch", "Dinner"].includes(stop?.mealRole);
+}
+
 export function haversineKm(a, b) {
   if (!hasCoordinates(a) || !hasCoordinates(b)) return 0;
   const latDelta = radians(b.lat - a.lat);
@@ -42,9 +46,11 @@ function groupCost(group, previous) {
 
 function bestGroupOrder(group, previous) {
   if (group.length > 7 || group.some((stop) => !hasCoordinates(stop))) return group;
-  return permutations(group).reduce((best, candidate) => (
+  const ordered = permutations(group).reduce((best, candidate) => (
     groupCost(candidate, previous) < groupCost(best, previous) ? candidate : best
   ), group);
+  const times = group.map((stop) => stop.time).sort();
+  return ordered.map((stop, index) => ({ ...stop, time: times[index] }));
 }
 
 function attachWalkingLegs(stops) {
@@ -65,13 +71,32 @@ function attachWalkingLegs(stops) {
 export function optimizeDayStops(stops) {
   if (!Array.isArray(stops) || stops.length < 2) return attachWalkingLegs(stops || []);
   const original = [...stops];
-  const grouped = [0, 1, 2].map((band) => original.filter((stop) => timeBand(stop.time) === band));
+  if (original.some((stop) => !hasCoordinates(stop))) return attachWalkingLegs(original);
+
   let previous = null;
-  const candidate = grouped.flatMap((group) => {
-    const optimized = bestGroupOrder(group, previous);
-    previous = optimized.at(-1) || previous;
-    return optimized;
-  });
+  const candidate = [];
+  let segment = [];
+  const flushSegment = () => {
+    const grouped = [0, 1, 2].map((band) => segment.filter((stop) => timeBand(stop.time) === band));
+    for (const group of grouped) {
+      const optimized = bestGroupOrder(group, previous);
+      candidate.push(...optimized);
+      previous = optimized.at(-1) || previous;
+    }
+    segment = [];
+  };
+
+  for (const stop of original) {
+    if (!isMealAnchor(stop)) {
+      segment.push(stop);
+      continue;
+    }
+    flushSegment();
+    candidate.push(stop);
+    previous = stop;
+  }
+  flushSegment();
+
   const ordered = routeDistanceKm(candidate) <= routeDistanceKm(original) ? candidate : original;
   return attachWalkingLegs(ordered);
 }

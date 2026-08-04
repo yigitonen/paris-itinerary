@@ -29,7 +29,8 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
-    "@supabase/supabase-js": "2.112.0"
+    "@supabase/supabase-js": "2.112.0",
+    "leaflet": "1.9.4"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",

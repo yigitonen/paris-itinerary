@@ -3,3 +3,5 @@ project_id = "fskujzurzqjncvfrqxlr"
 [functions.plan-trip]
 verify_jwt = true
 
+[functions.places]
+verify_jwt = true

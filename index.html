@@ -36,6 +36,7 @@
       <nav class="side-nav" aria-label="Sayfalar">
         <button class="nav-item active" data-route="home"><i data-lucide="house"></i><span>Bugün</span></button>
         <button class="nav-item" data-route="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
+        <button class="nav-item" data-route="friends"><i data-lucide="users"></i><span>Arkadaşlar</span></button>
         <button class="nav-item" data-route="memories"><i data-lucide="notebook-pen"></i><span>Anılar</span></button>
         <button class="nav-item" data-route="settings"><i data-lucide="settings-2"></i><span>Ayarlar</span></button>
       </nav>
@@ -90,6 +91,11 @@
         <div class="journal-grid" id="journalGrid"></div>
       </section>
 
+      <section class="page" id="page-friends" data-page="friends">
+        <div class="page-head"><div><span class="eyebrow">BİRLİKTE KEŞFET</span><h1>Arkadaşlar</h1><p>Gerçek Roamly hesaplarını bul, isteklerini yönet ve seyahat edeceğin insanları yanında tut.</p></div></div>
+        <section class="friends-shell" id="friendsContent" aria-live="polite"></section>
+      </section>
+
       <section class="page" id="page-settings" data-page="settings">
         <div class="page-head"><div><span class="eyebrow">ROAMLY SENİN</span><h1>Ayarlar</h1><p>Hesabını, verilerini ve yolculuk tercihlerini yönet.</p></div></div>
         <div class="settings-layout">
@@ -108,7 +114,7 @@
       <button data-route="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
       <button class="plan-fab" data-open="planner" aria-label="Yeni plan"><span><i data-lucide="sparkles"></i></span></button>
       <button data-route="memories"><i data-lucide="notebook-pen"></i><span>Anılar</span></button>
-      <button data-route="settings"><i data-lucide="settings-2"></i><span>Ayarlar</span></button>
+      <button data-route="friends"><i data-lucide="users"></i><span>Arkadaşlar</span></button>
     </nav>
   </div>
 
@@ -136,10 +142,12 @@
     <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="stopTitle">
       <div class="modal-head"><div><span class="eyebrow">ROTAYA EKLE</span><h2 id="stopTitle">Yeni durak</h2></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
       <form id="stopForm" class="planner-form">
-        <input type="hidden" name="dayId"><input type="hidden" name="stopId">
-        <label class="form-field full"><span>Yer</span><span class="field"><i data-lucide="map-pin"></i><input name="title" required placeholder="Müze, restoran, mahalle…" data-initial-focus></span></label>
-        <div class="form-grid"><label class="form-field"><span>Saat</span><span class="field"><i data-lucide="clock-3"></i><input name="time" type="time" value="10:00" required></span></label><label class="form-field"><span>Kategori</span><span class="field"><i data-lucide="tag"></i><select name="category"><option>Kahve</option><option>Tarih</option><option>Sanat</option><option>Mahalle</option><option>Yemek</option><option>Doğa</option><option>Manzara</option><option>Diğer</option></select></span></label></div>
+        <input type="hidden" name="dayId"><input type="hidden" name="stopId"><input type="hidden" name="placeId"><input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="provider"><input type="hidden" name="googleMapsUrl"><input type="hidden" name="rating"><input type="hidden" name="reviewCount">
+        <label class="form-field full place-search-field"><span>Yer ara</span><span class="field"><i data-lucide="search"></i><input name="title" required placeholder="Müze, restoran, mahalle…" autocomplete="off" aria-autocomplete="list" aria-controls="placeSuggestions" data-initial-focus></span><div class="place-suggestions" id="placeSuggestions" role="listbox"></div><small class="provider-note" id="placeProviderNote">3 harften sonra Google Places ile arar; anahtar yoksa OpenStreetMap kullanır.</small></label>
+        <div class="form-grid"><label class="form-field"><span>Saat</span><span class="field"><i data-lucide="clock-3"></i><input name="time" type="time" value="10:00" required></span></label><label class="form-field"><span>Kategori</span><span class="field"><i data-lucide="tag"></i><select name="category"><option>Kahvaltı</option><option>Kahve</option><option>Tarih</option><option>Sanat</option><option>Mahalle</option><option>Öğle yemeği</option><option>Akşam yemeği</option><option>Yemek</option><option>Doğa</option><option>Manzara</option><option>Diğer</option></select></span></label></div>
         <label class="form-field full"><span>Adres</span><span class="field"><i data-lucide="navigation"></i><input name="address" placeholder="Yol tarifi için adres"></span></label>
+        <div class="form-grid"><label class="form-field"><span>Rezervasyon</span><span class="field"><i data-lucide="calendar-check"></i><select name="bookingStatus"><option value="none">Gerekmiyor / bilinmiyor</option><option value="needed">Rezervasyon gerekli</option><option value="booked">Rezervasyon yapıldı</option></select></span></label><label class="form-field"><span>Onay kodu</span><span class="field"><i data-lucide="ticket-check"></i><input name="confirmation" maxlength="80" placeholder="İsteğe bağlı"></span></label></div>
+        <label class="form-field full"><span>Hatırlatıcı <em>isteğe bağlı</em></span><span class="field"><i data-lucide="bell-ring"></i><input name="reminderAt" type="datetime-local"></span><small class="provider-note">Telefonda yerel bildirim olarak kurulur; webde planın içinde saklanır.</small></label>
         <label class="form-field full"><span>Not</span><textarea name="notes" rows="3" placeholder="Rezervasyon, süre veya küçük bir hatırlatma…"></textarea></label>
         <div class="form-actions"><button class="danger-button hidden" type="button" data-action="delete-stop">Durağı sil</button><button class="primary-button" type="submit">Kaydet</button></div>
       </form>

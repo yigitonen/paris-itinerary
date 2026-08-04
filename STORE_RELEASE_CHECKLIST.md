@@ -25,7 +25,10 @@
 
 - [x] Production Supabase schema with owner-scoped row-level security.
 - [x] Protected AI Edge Function deployed; no provider secret is bundled in the client.
-- [x] Guest mode, cloud account flow, trip editing, budget, journal, export/import, and route-studio handoff.
+- [x] Guest mode, cloud account flow, trip editing, budget, journal, export/import, and integrated Route Studio.
+- [x] Pace-sized AI days with breakfast, lunch, dinner, unique venues, and server-side validation.
+- [x] Google-first place autocomplete/nearby architecture with OpenStreetMap fallback and a server-side usage cap.
+- [x] Real Friends profiles, requests, acceptance/removal, grants, and row-level security.
 - [x] PKCE Google/email authentication with production Sites and native callback allowlists; obsolete GitHub callbacks removed.
 - [x] Offline app shell, guest persistence, and queued signed-in edits that synchronize after reconnection.
 - [x] Native camera/photo picker, foreground location, recap sharing, local reminders, and custom deep-link integrations.

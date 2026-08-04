@@ -68,7 +68,11 @@ export async function completePkceCallback(callbackUrl) {
 const readGuestTrips = () => {
   try {
     const parsed = JSON.parse(localStorage.getItem(GUEST_STORAGE_KEY) || 'null');
-    if (Array.isArray(parsed) && parsed.length) return parsed;
+    if (Array.isArray(parsed) && parsed.length) {
+      const repaired = parsed.map((trip) => trip.id === 'demo-rome' ? createDemoTrip() : trip);
+      writeGuestTrips(repaired);
+      return repaired;
+    }
   } catch (error) {
     console.warn('Guest trips could not be read', error);
   }
@@ -104,6 +108,7 @@ const toRow = (trip, userId) => ({
     researchSummary: trip.researchSummary || '',
     researchSources: trip.researchSources || [],
     plannerMeta: trip.plannerMeta || null,
+    savedPlaces: trip.savedPlaces || [],
     days: trip.days || [],
     expenses: trip.expenses || [],
     journals: trip.journals || []
@@ -130,6 +135,7 @@ const fromRow = (row) => ({
   researchSummary: row.plan?.researchSummary || '',
   researchSources: row.plan?.researchSources || [],
   plannerMeta: row.plan?.plannerMeta || null,
+  savedPlaces: row.plan?.savedPlaces || [],
   days: row.plan?.days || [],
   expenses: row.plan?.expenses || [],
   journals: row.plan?.journals || [],

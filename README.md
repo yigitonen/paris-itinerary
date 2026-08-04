@@ -1,9 +1,9 @@
 # Roamly
 
 Roamly is a Turkish-first travel workspace for planning a trip, shaping each
-day, tracking expenses, and keeping a private journal. The main experience is
-`index.html`; the deeper map and route-optimisation workspace remains in
-`app.html` and opens the same active trip.
+day, tracking expenses, connecting with friends, and keeping a private journal.
+The map, route tools, nearby discovery, search, budget, and journal all live in
+one interface and save to the same trip.
 
 ## Product model
 
@@ -12,6 +12,11 @@ day, tracking expenses, and keeping a private journal. The main experience is
   trips remain editable offline and queued changes synchronize after reconnection.
 - AI planning runs only through the protected `plan-trip` Supabase Edge
   Function. The Gemini key never enters the browser or native bundle.
+- Google-first place autocomplete, place details, and nearby discovery run
+  through the protected `places` Edge Function. If a Google Places key is not
+  configured, search falls back to OpenStreetMap without exposing a secret.
+- Friends are real Supabase profiles and connection requests protected by
+  row-level security; no fabricated social feed or sample counters are shown.
 - When AI is unavailable, Roamly says so and offers a blank editable plan. It
   never presents a canned itinerary as model output.
 - Roamly Locals is an honest early-access waitlist until identity, safety,
@@ -31,9 +36,9 @@ and `dist/server`. The normal build remains under `dist` for Capacitor.
 ## Supabase and Gemini
 
 The live schema is defined in
-`supabase/migrations/202608040001_core_travel.sql`. It contains private
-owner-scoped trips and the Locals waitlist, both protected by row-level
-security.
+`supabase/migrations/`. It contains private owner-scoped trips, the Locals
+waitlist, Friends profiles/connections, and a server-only Places usage ledger,
+all protected by grants and row-level security.
 
 AI planning uses Gemini 3.1 Flash Lite. Add a Google AI Studio key as the
 `GEMINI_API_KEY` Supabase Edge Function secret. The free tier can be used
@@ -59,6 +64,17 @@ The optional `GEMINI_MODEL` secret can override the default
 supabase functions deploy plan-trip
 ```
 
+For Google Places, enable Places API (New), create a server-restricted key, and
+add it as `GOOGLE_PLACES_API_KEY`. Then deploy the protected function:
+
+```sh
+supabase secrets set GOOGLE_PLACES_API_KEY=your_server_key
+supabase functions deploy places
+```
+
+Roamly caps Google Places traffic per signed-in user. The key is optional;
+without it, place search and nearby discovery continue through OpenStreetMap.
+
 Do not add provider keys to `src/config.js`, `.env` variables exposed by Vite,
 or either native project.
 
@@ -76,9 +92,10 @@ The native projects are in `ios/` and `android/`. Signing, store screenshots,
 and physical-device permission testing are tracked in
 `STORE_RELEASE_CHECKLIST.md`.
 
-## Advanced route studio
+## Route Studio
 
-The Roamly Studio supports editable day plans, drag-and-drop stops, walking
-links, route optimisation, bookings, memories, native camera/location/reminder
-actions, recap sharing, and JSON backup/import.
-Changes are saved to the same cloud trip when the user is signed in.
+The Route Studio is built into every trip. It shows the day on a live map,
+checks pace and breakfast/lunch/dinner coverage, keeps meals anchored while
+optimizing nearby activities, shifts the schedule when running late, searches
+nearby places, opens TikTok traveler research, and creates a full-day Google
+Maps route. All changes save to the same trip.

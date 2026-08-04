@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { haversineKm, optimizeDayStops, routeDistanceKm } from "./route.js";
+import { haversineKm, isMealAnchor, optimizeDayStops, routeDistanceKm } from "./route.js";
 
 const stop = (title, time, lat, lng) => ({ title, time, lat, lng });
 
@@ -38,4 +38,30 @@ test("walking estimates are attached after the first verified stop", () => {
   assert.equal(output[0].travelFromPreviousMinutes, null);
   assert.ok(output[1].travelFromPreviousMinutes >= 2);
   assert.ok(output[1].travelFromPreviousKm > 0);
+});
+
+test("meal anchors keep their positions and order during optimization", () => {
+  const input = [
+    { ...stop("Breakfast", "08:00", 41.90, 12.48), mealRole: "Breakfast" },
+    stop("Far sight", "10:00", 41.94, 12.48),
+    stop("Near sight", "11:00", 41.91, 12.48),
+    { ...stop("Lunch", "13:00", 41.89, 12.47), mealRole: "Lunch" },
+    stop("Evening sight", "17:00", 41.88, 12.46),
+    { ...stop("Dinner", "20:00", 41.87, 12.45), mealRole: "Dinner" }
+  ];
+  const output = optimizeDayStops(input);
+  assert.deepEqual(output.filter(isMealAnchor).map((item) => item.title), ["Breakfast", "Lunch", "Dinner"]);
+  assert.deepEqual(output.map((item, index) => isMealAnchor(item) ? index : null).filter((value) => value !== null), [0, 3, 5]);
+  assert.equal(output[0].time, "08:00");
+  assert.equal(output[3].time, "13:00");
+  assert.equal(output[5].time, "20:00");
+});
+
+test("a missing coordinate leaves the stop order unchanged", () => {
+  const input = [
+    stop("A", "09:00", 41.90, 12.48),
+    stop("Unknown", "10:00", null, null),
+    stop("B", "11:00", 41.91, 12.49)
+  ];
+  assert.deepEqual(optimizeDayStops(input).map((item) => item.title), ["A", "Unknown", "B"]);
 });

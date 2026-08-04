@@ -1,5 +1,4 @@
 import './styles.css';
-import { ACTIVE_TRIP_STORAGE_KEY } from './src/config.js';
 import { COVER_IMAGES, createManualTrip } from './src/data.js';
 import {
   completePkceCallback,
@@ -16,6 +15,12 @@ import {
   supabase
 } from './src/repository.js';
 import { generateTrip } from './src/planner.js';
+import { createPlacesClient, debounce, NEARBY_CATEGORIES } from './src/places.js';
+import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
+import { renderRouteMap } from './src/map.js';
+import { ensureProfile, loadConnections, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
+import { parseGoogleSavedPlaces } from './src/importers.js';
+import { getTripWeather } from './src/weather.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -23,6 +28,7 @@ const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (char) => (
 const icons = () => window.lucide?.createIcons({ attrs: { 'aria-hidden': 'true' } });
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const uid = () => crypto.randomUUID();
+const reminderIdFor = (value) => [...String(value)].reduce((hash, char) => Math.imul(31, hash) + char.charCodeAt(0) | 0, 7) >>> 1 || 1;
 
 const formatDate = (value, options = { day: 'numeric', month: 'short' }) => new Intl.DateTimeFormat('tr-TR', options).format(new Date(`${value}T12:00:00`));
 const formatRange = (trip) => `${formatDate(trip.startDate)} – ${formatDate(trip.endDate, { day: 'numeric', month: 'short', year: 'numeric' })}`;
@@ -49,8 +55,16 @@ const state = {
   activeTripId: null,
   activeDayId: null,
   filter: 'all',
-  syncing: false
+  syncing: false,
+  nearbyResults: [],
+  nearbyCategory: '',
+  placeSuggestions: [],
+  connections: [],
+  profileResults: []
 };
+
+const places = createPlacesClient();
+let placeSearchController;
 
 let toastTimer;
 let modalReturnFocus = null;
@@ -174,6 +188,7 @@ function showRoute(route, { tripId } = {}) {
   if (route === 'trips') renderTrips();
   if (route === 'memories') renderMemories();
   if (route === 'settings') renderSettings();
+  if (route === 'friends') void renderFriends();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   icons();
 }
@@ -247,6 +262,45 @@ function renderSettings() {
   icons();
 }
 
+const profileCard = (profile, action = '') => {
+  const name = profile?.display_name || profile?.handle || 'Gezgin';
+  const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR');
+  return `<article class="profile-card"><span class="profile-avatar">${profile?.avatar_url ? `<img src="${escapeHtml(profile.avatar_url)}" alt="">` : escapeHtml(initials)}</span><div><strong>${escapeHtml(name)}</strong><small>@${escapeHtml(profile?.handle || 'roamly')}</small></div>${action}</article>`;
+};
+
+async function renderFriends({ refresh = true } = {}) {
+  const root = $('#friendsContent');
+  if (!root) return;
+  if (!state.session) {
+    root.innerHTML = `<div class="friends-gate"><span class="brand-symbol large"><i data-lucide="users"></i></span><h2>Arkadaşların gerçek hesaplarla başlar.</h2><p>İstek göndermek ve arkadaşlarını cihazların arasında tutmak için hesabınla devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
+    icons();
+    return;
+  }
+  if (refresh) {
+    root.innerHTML = `<div class="friends-loading"><i data-lucide="loader-circle"></i>Arkadaşların yükleniyor…</div>`;
+    icons();
+    try {
+      await ensureProfile(state.session);
+      state.connections = await loadConnections(state.session);
+    } catch (error) {
+      console.error(error);
+      root.innerHTML = `<div class="empty-state"><i data-lucide="wifi-off"></i><h2>Arkadaşlar yüklenemedi.</h2><p>Bağlantını kontrol edip yeniden dene.</p><button class="secondary-button" data-action="reload-friends">Yeniden dene</button></div>`;
+      icons();
+      return;
+    }
+  }
+  const userId = state.session.user.id;
+  const accepted = state.connections.filter((item) => item.status === 'accepted');
+  const incoming = state.connections.filter((item) => item.status === 'pending' && item.addressee_id === userId);
+  const outgoing = state.connections.filter((item) => item.status === 'pending' && item.requester_id === userId);
+  const otherProfile = (connection) => connection.requester_id === userId ? connection.addressee : connection.requester;
+  root.innerHTML = `<section class="friend-search-card"><div><span class="eyebrow coral-text">GEZGİN BUL</span><h2>Birlikte gideceğin kişiyi ara.</h2><p>İsim veya Roamly kullanıcı adıyla ara. Sahte örnek profiller göstermiyoruz.</p></div><form id="friendSearchForm"><span class="field"><i data-lucide="search"></i><input name="query" minlength="2" required placeholder="İsim veya @kullanıcıadı" autocomplete="off"></span><button class="primary-button">Ara</button></form>${state.profileResults.length ? `<div class="profile-results">${state.profileResults.map((profile) => profileCard(profile, `<button class="secondary-button" data-action="request-friend" data-profile-id="${profile.user_id}"><i data-lucide="user-plus"></i>İstek gönder</button>`)).join('')}</div>` : ''}</section>
+  ${incoming.length ? `<section class="friends-section"><span class="eyebrow">BEKLEYEN İSTEKLER · ${incoming.length}</span><div class="friends-grid">${incoming.map((connection) => profileCard(otherProfile(connection), `<span class="profile-actions"><button class="primary-button" data-action="respond-friend" data-connection-id="${connection.id}" data-status="accepted">Kabul et</button><button class="secondary-button" data-action="respond-friend" data-connection-id="${connection.id}" data-status="declined">Reddet</button></span>`)).join('')}</div></section>` : ''}
+  <section class="friends-section"><div class="section-row"><div><span class="eyebrow">ARKADAŞLARIN · ${accepted.length}</span><h2 class="serif">Bir sonraki rota daha iyi birlikte.</h2></div></div><div class="friends-grid">${accepted.length ? accepted.map((connection) => profileCard(otherProfile(connection), `<button class="profile-menu" data-action="remove-friend" data-connection-id="${connection.id}" aria-label="Arkadaşlığı kaldır"><i data-lucide="user-minus"></i></button>`)).join('') : `<div class="empty-state"><i data-lucide="users-round"></i><h2>Henüz arkadaşın yok.</h2><p>Yukarıdan gerçek bir Roamly hesabı ara ve bağlantı isteği gönder.</p></div>`}</div></section>
+  ${outgoing.length ? `<section class="friends-section"><span class="eyebrow">GÖNDERDİĞİN İSTEKLER</span><div class="friends-grid">${outgoing.map((connection) => profileCard(otherProfile(connection), `<span class="pending-label">Yanıt bekleniyor</span>`)).join('')}</div></section>` : ''}`;
+  icons();
+}
+
 function stopMapsUrl(stop, trip) {
   const groundedUrl = safeHttpUrl(stop.mapsSourceUrl);
   if (groundedUrl) return groundedUrl;
@@ -258,6 +312,9 @@ function stopMapsUrl(stop, trip) {
 
 function renderStop(stop, index, trip, day) {
   const importance = importanceLabel(stop.importance);
+  const meal = mealRole(stop);
+  const mealLabel = ({ breakfast: 'Kahvaltı', lunch: 'Öğle yemeği', dinner: 'Akşam yemeği' })[meal];
+  const bookingLabel = ({ needed: 'Rezervasyon gerekli', booked: 'Rezervasyon tamam' })[stop.bookingStatus];
   const reviews = Number(stop.reviewCount) > 0 ? ` · ${Number(stop.reviewCount).toLocaleString('tr-TR')} değerlendirme` : '';
   const rating = Number(stop.rating) > 0 ? `<span class="stop-badge rating-badge"><i data-lucide="star"></i>${Number(stop.rating).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}${reviews}</span>` : '';
   const travel = Number(stop.travelFromPreviousMinutes) > 0
@@ -265,7 +322,7 @@ function renderStop(stop, index, trip, day) {
     : '';
   const mapsSourceUrl = safeHttpUrl(stop.mapsSourceUrl);
   const mapsAttribution = mapsSourceUrl ? `<a class="maps-attribution" href="${mapsSourceUrl}" target="_blank" rel="noopener"><span translate="no">Google Maps</span> · ${escapeHtml(stop.mapsSourceName || stop.title)}<i data-lucide="arrow-up-right"></i></a>` : '';
-  return `<div class="stop-item"><time class="stop-time">${escapeHtml(stop.time || '—')}</time><span class="stop-dot">${index + 1}</span><article class="stop-card"><div class="stop-content">${travel}<div class="stop-badges">${importance ? `<span class="stop-badge importance-${escapeHtml(stop.importance)}">${escapeHtml(importance)}</span>` : ''}${stop.verified ? '<span class="stop-badge verified-badge"><i data-lucide="badge-check"></i>Google Maps yeriyle eşleşti</span>' : ''}${rating}</div><h3>${escapeHtml(stop.title)}</h3>${mapsAttribution}<p class="stop-note">${escapeHtml(stop.notes || stop.address || 'Not eklenmedi.')}</p>${stop.why ? `<p class="stop-insight"><strong>Neden burada?</strong>${escapeHtml(stop.why)}</p>` : ''}${stop.travelerNote ? `<p class="stop-insight traveler-insight"><strong>Gezginlerden ortak not</strong>${escapeHtml(stop.travelerNote)}</p>` : ''}<small>${escapeHtml(stop.category || 'Durak')}${stop.duration ? ` · ${escapeHtml(stop.duration)}` : ''}${stop.address ? ` · ${escapeHtml(stop.address)}` : ''}</small></div><div class="stop-tools"><a href="${stopMapsUrl(stop, trip)}" target="_blank" rel="noopener" aria-label="Google Maps'te aç"><i data-lucide="navigation"></i></a><button data-edit-stop="${stop.id}" data-day-id="${day.id}" aria-label="Durağı düzenle"><i data-lucide="pencil"></i></button></div></article></div>`;
+  return `<div class="stop-item"><time class="stop-time">${escapeHtml(stop.time || '—')}</time><span class="stop-dot">${index + 1}</span><article class="stop-card"><div class="stop-content">${travel}<div class="stop-badges">${mealLabel ? `<span class="stop-badge meal-badge"><i data-lucide="utensils"></i>${mealLabel}</span>` : ''}${bookingLabel ? `<span class="stop-badge ${stop.bookingStatus === 'booked' ? 'booked-badge' : 'booking-needed-badge'}"><i data-lucide="calendar-check"></i>${bookingLabel}</span>` : ''}${stop.reminderAt ? '<span class="stop-badge reminder-badge"><i data-lucide="bell-ring"></i>Hatırlatıcı</span>' : ''}${importance ? `<span class="stop-badge importance-${escapeHtml(stop.importance)}">${escapeHtml(importance)}</span>` : ''}${stop.verified ? '<span class="stop-badge verified-badge"><i data-lucide="badge-check"></i>Google Maps yeriyle eşleşti</span>' : ''}${rating}</div><h3>${escapeHtml(stop.title)}</h3>${mapsAttribution}<p class="stop-note">${escapeHtml(stop.notes || stop.address || 'Not eklenmedi.')}</p>${stop.confirmation ? `<p class="stop-insight"><strong>Rezervasyon onayı</strong>${escapeHtml(stop.confirmation)}</p>` : ''}${stop.why ? `<p class="stop-insight"><strong>Neden burada?</strong>${escapeHtml(stop.why)}</p>` : ''}${stop.travelerNote ? `<p class="stop-insight traveler-insight"><strong>Gezginlerden ortak not</strong>${escapeHtml(stop.travelerNote)}</p>` : ''}<small>${escapeHtml(stop.category || 'Durak')}${stop.duration ? ` · ${escapeHtml(stop.duration)}` : ''}${stop.address ? ` · ${escapeHtml(stop.address)}` : ''}</small></div><div class="stop-tools"><button data-action="move-stop" data-stop-id="${stop.id}" data-direction="-1" aria-label="Durağı yukarı taşı" ${index === 0 ? 'disabled' : ''}><i data-lucide="arrow-up"></i></button><button data-action="move-stop" data-stop-id="${stop.id}" data-direction="1" aria-label="Durağı aşağı taşı" ${index === day.stops.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-down"></i></button><a href="${stopMapsUrl(stop, trip)}" target="_blank" rel="noopener" aria-label="Google Maps'te aç"><i data-lucide="navigation"></i></a><a href="${tiktokSearchUrl(stop.title, trip.destination)}" target="_blank" rel="noopener" aria-label="TikTok'ta gezgin videolarını ara"><i data-lucide="search"></i></a><button data-edit-stop="${stop.id}" data-day-id="${day.id}" aria-label="Durağı düzenle"><i data-lucide="pencil"></i></button></div></article></div>`;
 }
 
 function renderEvidenceCard(trip) {
@@ -276,16 +333,39 @@ function renderEvidenceCard(trip) {
   return `<section class="trip-side-card evidence-card"><span class="eyebrow">PLAN GÜVENİ</span><h3>Araştırıldı, sonra sıralandı.</h3><p>${escapeHtml(trip.researchSummary || 'Önemli yerler, yerel öneriler ve gezgin deneyimleri kaynaklarla birlikte değerlendirildi.')}</p><div class="evidence-facts"><span><i data-lucide="search-check"></i>Kaynak destekli araştırma</span><span><i data-lucide="map-pinned"></i>${verified}/${total || verified} Maps kaynağıyla eşleşti</span><span><i data-lucide="route"></i>Mahallelere göre rota sıralandı</span></div>${sources.length ? `<div class="source-list">${sources.slice(0, 5).map((source) => `<a href="${source.url}" target="_blank" rel="noopener"><span>${escapeHtml(source.title || new URL(source.url).hostname)}<small>${escapeHtml(source.provider || 'Web')}</small></span><i data-lucide="arrow-up-right"></i></a>`).join('')}</div>` : ''}<p class="evidence-caveat"><i data-lucide="info"></i>Saat, bilet ve kapanış bilgilerini gitmeden önce yeniden kontrol et. Gezgin notları tekil alıntı değil, tekrar eden deneyimlerin özetidir.</p></section>`;
 }
 
+async function renderTripWeather(trip) {
+  const root = $('#tripWeatherCard');
+  const center = dayCenter({ stops: trip.days.flatMap((day) => day.stops || []) });
+  if (!root || !center) { if (root) root.hidden = true; return; }
+  try {
+    const forecast = await getTripWeather({ ...center, startDate: trip.startDate, endDate: trip.endDate });
+    if (!root.isConnected || activeTrip()?.id !== trip.id || !forecast.length) { root.hidden = true; return; }
+    root.innerHTML = `<span class="eyebrow">HAVA DURUMU</span><h3>Valiz ve rota için kısa bakış</h3><div class="weather-days">${forecast.map((day) => `<span><strong>${formatDate(day.date, { weekday: 'short', day: 'numeric' })}</strong><em>${escapeHtml(day.label)}</em><b>${day.max}° / ${day.min}°</b><small>%${day.rain} yağış</small></span>`).join('')}</div><p>Open-Meteo tahmini · Seyahate yaklaşınca yeniden kontrol et.</p>`;
+  } catch { if (root.isConnected) root.hidden = true; }
+}
+
 function renderTripDetail() {
   const trip = activeTrip();
   if (!trip) { showRoute('trips'); return; }
   const day = trip.days.find((item) => item.id === state.activeDayId) || trip.days[0];
   state.activeDayId = day?.id || null;
+  if (!day) return;
   const spent = totalSpent(trip);
   const budget = Number(trip.budgetTotal || 0);
   const progress = budget ? Math.min(100, Math.round(spent / budget * 100)) : 0;
-  $('#tripDetail').innerHTML = `<section class="trip-hero" style="background-image:url('${coverUrl(trip)}')"><button class="icon-button trip-back" data-route="trips" aria-label="Seyahatlere dön"><i data-lucide="arrow-left"></i></button><div class="trip-hero-tools"><button class="secondary-button" data-action="export-trip"><i data-lucide="download"></i><span>Yedekle</span></button><button class="secondary-button" data-action="delete-trip"><i data-lucide="trash-2"></i><span>Sil</span></button></div><div class="trip-hero-copy"><span class="eyebrow">${statusLabel(trip)} · ${escapeHtml(trip.style.toLocaleUpperCase('tr-TR'))}</span><h1>${escapeHtml(trip.destination)}</h1><p>${formatRange(trip)} · ${dayCountText(trip)} · ${escapeHtml(trip.pace)} tempo${trip.summary ? ` · ${escapeHtml(trip.summary)}` : ''}</p></div></section><div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${item.id}"><strong>${index + 1}. gün</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })}</small></button>`).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${day.id}"><i data-lucide="plus"></i> Durak ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün sana ait.</h3><p>İlk durağı ekle veya gelişmiş rota stüdyosunda yerlerini optimize et.</p><button class="primary-button" data-open-stop="${day.id}">İlk durağı ekle</button></div>`}</div></section><aside class="trip-side" aria-label="Seyahat özeti ve araçları">${renderEvidenceCard(trip)}<section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${trip.currency} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${trip.currency} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm" aria-label="Harcama ekle"><input name="title" required placeholder="Harcama" aria-label="Harcama adı"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar" aria-label="Harcama tutarı"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${expense.id}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card studio-card"><span class="eyebrow">GELİŞMİŞ ARAÇLAR</span><h3>Rota stüdyosu</h3><p>Durakları sürükle, gerçek haritada gör, yürüyüşleri sırala, rezervasyon ve anılarını aynı planla yönet.</p><button class="primary-button" data-action="open-studio"><i data-lucide="route"></i> Stüdyoyu aç</button></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
+  const ready = dayReadiness(day, trip.pace);
+  const mapsUrl = googleDayRouteUrl(day);
+  const nearby = state.nearbyResults || [];
+  const savedPlaces = trip.savedPlaces || [];
+  $('#tripDetail').innerHTML = `<section class="trip-hero" style="background-image:url('${coverUrl(trip)}')"><button class="icon-button trip-back" data-route="trips" aria-label="Seyahatlere dön"><i data-lucide="arrow-left"></i></button><div class="trip-hero-tools"><button class="secondary-button" data-action="share-trip"><i data-lucide="share-2"></i><span>Paylaş</span></button><button class="secondary-button" data-action="export-trip"><i data-lucide="download"></i><span>Yedekle</span></button><button class="secondary-button" data-action="delete-trip"><i data-lucide="trash-2"></i><span>Sil</span></button></div><div class="trip-hero-copy"><span class="eyebrow">${statusLabel(trip)} · ${escapeHtml(trip.style.toLocaleUpperCase('tr-TR'))}</span><h1>${escapeHtml(trip.destination)}</h1><p>${formatRange(trip)} · ${dayCountText(trip)} · ${escapeHtml(trip.pace)} tempo${trip.summary ? ` · ${escapeHtml(trip.summary)}` : ''}</p></div></section>
+  <section class="route-studio" aria-label="Rota Stüdyosu"><div class="studio-heading"><div><span class="eyebrow coral-text">ROTA STÜDYOSU · TEK PLAN</span><h2>Günü haritada gör, ritmini burada düzelt.</h2><p>Bu çalışma alanı artık ayrı bir eski uygulamaya gitmez; yaptığın her değişiklik aynı seyahate kaydolur.</p></div><div class="readiness-pill ${ready.complete ? 'complete' : ''}"><i data-lucide="${ready.complete ? 'circle-check' : 'circle-dashed'}"></i><span><strong>${ready.complete ? 'Gün tamam' : `${ready.stopCount}/${ready.target} durak`}</strong><small>${ready.hasBreakfast ? 'Kahvaltı' : 'Kahvaltı eksik'} · ${ready.hasLunch ? 'Öğle' : 'Öğle eksik'} · ${ready.hasDinner ? 'Akşam' : 'Akşam eksik'}</small></span></div></div>
+  <div class="route-map" id="routeMap" role="img" aria-label="Seçili günün rota haritası"></div>
+  <div class="studio-toolbar"><button class="secondary-button" data-action="optimize-day"><i data-lucide="route"></i> Rotayı sırala</button><button class="secondary-button" data-action="shift-day" data-minutes="-30"><i data-lucide="clock-arrow-down"></i> 30 dk erkene</button><button class="secondary-button" data-action="shift-day" data-minutes="15"><i data-lucide="clock-arrow-up"></i> +15 dk gecikme</button><button class="secondary-button" data-action="shift-day" data-minutes="30"><i data-lucide="clock-arrow-up"></i> +30 dk gecikme</button>${mapsUrl ? `<a class="primary-button" href="${mapsUrl}" target="_blank" rel="noopener"><i data-lucide="navigation"></i> Tam günü Google Maps'te aç</a>` : ''}</div>
+  <div class="nearby-studio"><div><span class="eyebrow">YAKINDA NE VAR?</span><h3>Akıştaki boşluğu doğru yerle doldur.</h3></div><div class="nearby-chips">${Object.keys(NEARBY_CATEGORIES).map((category) => `<button class="${state.nearbyCategory === category ? 'active' : ''}" data-action="nearby" data-category="${category}">${({ breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', cafe: 'Kahve', attractions: 'Gezilecek yerler' })[category]}</button>`).join('')}<a href="${tiktokSearchUrl(`${day.theme || 'gezilecek yerler'} önerileri`, trip.destination)}" target="_blank" rel="noopener"><i data-lucide="search"></i>TikTok’ta gezgin videoları</a><label class="secondary-button file-button"><i data-lucide="bookmark-plus"></i>Google kayıtlarını getir<input data-google-saved-input type="file" accept="application/json,.json,.geojson"></label></div>${nearby.length ? `<div class="nearby-results">${nearby.map((place, index) => `<article><div><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || place.primaryType)} · ${place.provider === 'google' ? 'Google Places' : 'OpenStreetMap'}</small></div><button class="secondary-button" data-action="add-nearby" data-place-index="${index}"><i data-lucide="plus"></i>Ekle</button></article>`).join('')}</div>` : ''}${savedPlaces.length ? `<div class="saved-places"><div><span class="eyebrow">GOOGLE KAYITLARIN · ${savedPlaces.length}</span><button data-action="clear-saved-places">Listeyi temizle</button></div><div class="nearby-results">${savedPlaces.slice(0, 20).map((place, index) => `<article><div><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || 'Kaydedilen yer')}</small></div><button class="secondary-button" data-action="add-saved-place" data-place-index="${index}"><i data-lucide="plus"></i>Güne ekle</button></article>`).join('')}</div></div>` : ''}</div></section>
+  <div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => { const itemReady = dayReadiness(item, trip.pace); return `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${item.id}"><strong>${index + 1}. gün ${itemReady.complete ? '✓' : ''}</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })} · ${itemReady.stopCount}/${itemReady.target}</small></button>`; }).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${day.id}"><i data-lucide="plus"></i> Yer ara ve ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün boş kalmamalı.</h3><p>AI planını yeniden oluştur veya arama ile kahvaltıdan akşam yemeğine kadar günü doldur.</p><button class="primary-button" data-open-stop="${day.id}">İlk yeri ara</button></div>`}</div></section><aside class="trip-side" aria-label="Seyahat özeti ve araçları">${renderEvidenceCard(trip)}<section class="trip-side-card weather-card" id="tripWeatherCard"><span class="eyebrow">HAVA DURUMU</span><h3>Tahmin yükleniyor…</h3></section><section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${trip.currency} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${trip.currency} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm" aria-label="Harcama ekle"><input name="title" required placeholder="Harcama" aria-label="Harcama adı"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar" aria-label="Harcama tutarı"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${expense.id}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
   icons();
+  requestAnimationFrame(() => renderRouteMap($('#routeMap'), day.stops));
+  void renderTripWeather(trip);
 }
 
 function renderAll() {
@@ -421,49 +501,61 @@ function openStopForm(dayId, stopId) {
   form.elements.stopId.value = stop?.id || '';
   form.elements.time.value = stop?.time || '10:00';
   form.elements.title.value = stop?.title || '';
-  form.elements.category.value = stop?.category || 'Kahve';
+  form.elements.category.value = [...form.elements.category.options].some((option) => option.value === stop?.category) ? stop.category : 'Diğer';
   form.elements.address.value = stop?.address || '';
   form.elements.notes.value = stop?.notes || '';
+  form.elements.bookingStatus.value = stop?.bookingStatus || 'none';
+  form.elements.confirmation.value = stop?.confirmation || '';
+  form.elements.reminderAt.value = stop?.reminderAt ? String(stop.reminderAt).slice(0, 16) : '';
+  form.elements.placeId.value = stop?.placeId || '';
+  form.elements.lat.value = Number.isFinite(Number(stop?.lat)) ? stop.lat : '';
+  form.elements.lng.value = Number.isFinite(Number(stop?.lng)) ? stop.lng : '';
+  form.elements.provider.value = stop?.provider || '';
+  form.elements.googleMapsUrl.value = stop?.googleMapsUrl || stop?.mapsSourceUrl || '';
+  form.elements.rating.value = stop?.rating ?? '';
+  form.elements.reviewCount.value = stop?.reviewCount ?? '';
+  state.placeSuggestions = [];
+  $('#placeSuggestions').innerHTML = '';
   $('#stopTitle').textContent = stop ? 'Durağı düzenle' : 'Yeni durak';
   $('[data-action="delete-stop"]', form).classList.toggle('hidden', !stop);
   openModal('#stopModal');
 }
 
-function seedAdvancedStudio(trip) {
-  const studioTrip = {
-    id: trip.id,
-    name: trip.title || trip.destination,
-    destination: trip.destination,
-    emoji: '🧳',
-    tz: 'Europe/Istanbul',
-    start: trip.startDate,
-    end: trip.endDate,
-    participants: [],
-    hotel: null,
-    days: trip.days.map((day) => ({
-      id: day.id,
-      date: day.date,
-      title: day.title,
-      stops: day.stops.map((stop) => ({
-        id: stop.id,
-        time: stop.time,
-        title: stop.title,
-        cat: stop.category,
-        duration: stop.duration || '',
-        note: [stop.notes, stop.travelerNote].filter(Boolean).join('\n\n'),
-        lat: stop.lat ?? null,
-        lng: stop.lng ?? null
-      }))
-    }))
-  };
-  let studioStore = { version: 1, trips: [] };
-  try { studioStore = JSON.parse(localStorage.getItem('tripline-v1')) || studioStore; } catch {}
-  studioStore.trips = Array.isArray(studioStore.trips) ? studioStore.trips.filter((item) => item.id !== trip.id) : [];
-  studioStore.trips.unshift(studioTrip);
-  localStorage.setItem('tripline-v1', JSON.stringify(studioStore));
-  localStorage.setItem(ACTIVE_TRIP_STORAGE_KEY, trip.id);
-  location.href = `app.html?trip=${encodeURIComponent(trip.id)}`;
+function renderPlaceSuggestions() {
+  const root = $('#placeSuggestions');
+  if (!root) return;
+  root.innerHTML = state.placeSuggestions.map((place, index) => `<button type="button" role="option" data-place-suggestion="${index}"><span><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || 'Ayrıntıları görmek için seç')}</small></span><em>${place.provider === 'google' ? 'Google' : 'OSM'}</em></button>`).join('');
 }
+
+function applyPlaceToStopForm(place) {
+  const form = $('#stopForm');
+  form.elements.title.value = place.name || '';
+  form.elements.address.value = place.address || '';
+  form.elements.placeId.value = place.id || '';
+  form.elements.lat.value = place.lat ?? '';
+  form.elements.lng.value = place.lng ?? '';
+  form.elements.provider.value = place.provider || '';
+  form.elements.googleMapsUrl.value = place.googleMapsUrl || '';
+  form.elements.rating.value = place.rating ?? '';
+  form.elements.reviewCount.value = place.reviewCount ?? '';
+  $('#placeProviderNote').textContent = place.provider === 'google' ? 'Google Places sonucu seçildi.' : 'OpenStreetMap sonucu seçildi.';
+  state.placeSuggestions = [];
+  renderPlaceSuggestions();
+}
+
+const searchStopPlaces = debounce(async (query) => {
+  placeSearchController?.abort();
+  placeSearchController = new AbortController();
+  if (String(query).trim().length < 3) { state.placeSuggestions = []; renderPlaceSuggestions(); return; }
+  try {
+    $('#placeProviderNote').textContent = 'Yerler aranıyor…';
+    state.placeSuggestions = await places.autocomplete(`${query} ${activeTrip()?.destination || ''}`, { limit: 7, locationBias: dayCenter(activeTrip()?.days.find((item) => item.id === state.activeDayId)), signal: placeSearchController.signal });
+    renderPlaceSuggestions();
+    $('#placeProviderNote').textContent = state.placeSuggestions.some((place) => place.provider === 'google') ? 'Google Places sonuçları' : 'OpenStreetMap sonuçları · Google anahtarı eklenince otomatik olarak Google kullanılır.';
+  } catch (error) {
+    if (error.name !== 'AbortError') $('#placeProviderNote').textContent = 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.';
+  }
+}, 300);
 
 document.addEventListener('click', async (event) => {
   const control = event.target.closest('button, a');
@@ -492,6 +584,16 @@ document.addEventListener('click', async (event) => {
   if (control.dataset.dayId && control.classList.contains('day-tab')) { state.activeDayId = control.dataset.dayId; renderTripDetail(); return; }
   if (control.dataset.openStop) { openStopForm(control.dataset.openStop); return; }
   if (control.dataset.editStop) { openStopForm(control.dataset.dayId, control.dataset.editStop); return; }
+  if (control.dataset.placeSuggestion !== undefined) {
+    const suggestion = state.placeSuggestions[Number(control.dataset.placeSuggestion)];
+    if (!suggestion) return;
+    try {
+      applyPlaceToStopForm(suggestion.provider === 'google' && (suggestion.lat === null || suggestion.lng === null)
+        ? await places.details(suggestion, { query: suggestion.name })
+        : suggestion);
+    } catch (error) { console.error(error); toast('Yer ayrıntıları alınamadı. Başka bir sonuç dene.', 'error'); }
+    return;
+  }
   if (control.dataset.filter) {
     state.filter = control.dataset.filter;
     $$('#tripFilters button').forEach((button) => button.classList.toggle('active', button === control));
@@ -501,6 +603,60 @@ document.addEventListener('click', async (event) => {
 
   const action = control.dataset.action;
   if (action === 'manual-trip') await createManualFromPlanner();
+  if (action === 'optimize-day') {
+    const trip = activeTrip();
+    const index = trip.days.findIndex((item) => item.id === state.activeDayId);
+    const optimized = optimizeDay(trip.days[index]);
+    if (optimized === trip.days[index]) { toast('Rotayı sıralamak için en az iki konumlu durak gerekli.'); return; }
+    trip.days[index] = optimized;
+    await persistTrip(trip, 'Rota öğün saatlerini koruyarak yakınlığa göre sıralandı.');
+  }
+  if (action === 'shift-day') {
+    const trip = activeTrip();
+    const index = trip.days.findIndex((item) => item.id === state.activeDayId);
+    trip.days[index] = shiftDay(trip.days[index], Number(control.dataset.minutes));
+    await persistTrip(trip, 'Günün saatleri güncellendi.');
+  }
+  if (action === 'move-stop') {
+    const trip = activeTrip();
+    const index = trip.days.findIndex((item) => item.id === state.activeDayId);
+    trip.days[index] = moveStop(trip.days[index], control.dataset.stopId, Number(control.dataset.direction));
+    await persistTrip(trip, 'Durak sırası güncellendi.');
+  }
+  if (action === 'nearby') {
+    const trip = activeTrip();
+    const day = trip.days.find((item) => item.id === state.activeDayId);
+    const center = dayCenter(day);
+    if (!center) { toast('Yakındakileri bulmak için önce aramadan konumlu bir durak ekle.', 'error'); return; }
+    state.nearbyCategory = control.dataset.category;
+    state.nearbyResults = [];
+    renderTripDetail();
+    try {
+      state.nearbyResults = await places.nearby({ ...center, category: state.nearbyCategory, radiusMeters: 1800, limit: 8 });
+      renderTripDetail();
+      if (!state.nearbyResults.length) toast('Yakında bu kategoride bir yer bulunamadı.');
+    } catch (error) { console.error(error); toast('Yakındaki yerler alınamadı.', 'error'); }
+  }
+  if (action === 'add-nearby') {
+    const place = state.nearbyResults[Number(control.dataset.placeIndex)];
+    if (!place) return;
+    openStopForm(state.activeDayId);
+    applyPlaceToStopForm(place);
+    const category = ({ breakfast: 'Kahvaltı', lunch: 'Öğle yemeği', dinner: 'Akşam yemeği', cafe: 'Kahve', attractions: 'Tarih' })[state.nearbyCategory] || 'Diğer';
+    $('#stopForm').elements.category.value = category;
+    $('#stopForm').elements.time.value = ({ breakfast: '08:30', lunch: '13:00', dinner: '19:30', cafe: '16:00', attractions: '10:30' })[state.nearbyCategory] || '10:00';
+  }
+  if (action === 'add-saved-place') {
+    const place = activeTrip()?.savedPlaces?.[Number(control.dataset.placeIndex)];
+    if (!place) return;
+    openStopForm(state.activeDayId);
+    applyPlaceToStopForm(place);
+  }
+  if (action === 'clear-saved-places') {
+    const trip = activeTrip();
+    trip.savedPlaces = [];
+    await persistTrip(trip, 'Google kayıtları bu seyahatten kaldırıldı.');
+  }
   if (action === 'delete-stop') {
     const form = $('#stopForm');
     const trip = activeTrip();
@@ -529,6 +685,16 @@ document.addEventListener('click', async (event) => {
     link.click();
     URL.revokeObjectURL(link.href);
   }
+  if (action === 'share-trip') {
+    const trip = activeTrip();
+    const stopCount = trip.days.reduce((sum, day) => sum + (day.stops?.length || 0), 0);
+    const shareData = { title: `${trip.destination} · Roamly`, text: `${formatRange(trip)} · ${trip.days.length} gün · ${stopCount} durak. ${trip.summary || ''}`.trim(), url: location.origin };
+    try {
+      if (window.RoamlyNative?.isNative) await window.RoamlyNative.shareRecap(shareData);
+      else if (navigator.share) await navigator.share(shareData);
+      else { await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`); toast('Seyahat özeti panoya kopyalandı.'); }
+    } catch (error) { if (error?.name !== 'AbortError') { console.error(error); toast('Seyahat özeti paylaşılamadı.', 'error'); } }
+  }
   if (action === 'export-data') {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([JSON.stringify({ version: 1, trips: state.trips }, null, 2)], { type: 'application/json' }));
@@ -536,7 +702,20 @@ document.addEventListener('click', async (event) => {
     link.click();
     URL.revokeObjectURL(link.href);
   }
-  if (action === 'open-studio') seedAdvancedStudio(activeTrip());
+  if (action === 'reload-friends') await renderFriends();
+  if (action === 'request-friend') {
+    try { await requestConnection(control.dataset.profileId, state.session); state.profileResults = []; await renderFriends(); toast('Arkadaşlık isteği gönderildi.'); }
+    catch (error) { console.error(error); toast(error.message || 'İstek gönderilemedi.', 'error'); }
+  }
+  if (action === 'respond-friend') {
+    try { await respondToConnection(control.dataset.connectionId, control.dataset.status, state.session); await renderFriends(); toast(control.dataset.status === 'accepted' ? 'Artık arkadaşsınız.' : 'İstek reddedildi.'); }
+    catch (error) { console.error(error); toast(error.message || 'İstek güncellenemedi.', 'error'); }
+  }
+  if (action === 'remove-friend') {
+    if (!window.confirm('Bu arkadaşlığı kaldırmak istiyor musun?')) return;
+    try { await removeConnection(control.dataset.connectionId, state.session); await renderFriends(); toast('Arkadaşlık kaldırıldı.'); }
+    catch (error) { console.error(error); toast(error.message || 'Arkadaşlık kaldırılamadı.', 'error'); }
+  }
   if (action === 'sign-in-google') {
     if (!navigator.onLine) { toast('Giriş yapmak için internet bağlantısı gerekiyor.', 'error'); return; }
     const { data, error } = await startGoogleOAuth(location.href);
@@ -573,6 +752,12 @@ $('#plannerForm').addEventListener('submit', async (event) => {
   await runPlanner(planInputFromForm(event.currentTarget));
 });
 
+$('#stopForm').elements.title.addEventListener('input', (event) => {
+  const form = event.currentTarget.form;
+  for (const name of ['placeId', 'lat', 'lng', 'provider', 'googleMapsUrl', 'rating', 'reviewCount']) form.elements[name].value = '';
+  searchStopPlaces(event.currentTarget.value);
+});
+
 $('#stopForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -587,15 +772,50 @@ $('#stopForm').addEventListener('submit', async (event) => {
     category: String(data.get('category')),
     address: String(data.get('address') || '').trim(),
     notes: String(data.get('notes') || '').trim(),
-    duration: ''
+    bookingStatus: String(data.get('bookingStatus') || 'none'),
+    confirmation: String(data.get('confirmation') || '').trim(),
+    reminderAt: String(data.get('reminderAt') || ''),
+    duration: '',
+    mealRole: ({ Kahvaltı: 'Breakfast', 'Öğle yemeği': 'Lunch', 'Akşam yemeği': 'Dinner' })[String(data.get('category'))] || 'None',
+    placeId: String(data.get('placeId') || ''),
+    lat: data.get('lat') === '' ? null : Number(data.get('lat')),
+    lng: data.get('lng') === '' ? null : Number(data.get('lng')),
+    provider: String(data.get('provider') || ''),
+    googleMapsUrl: String(data.get('googleMapsUrl') || ''),
+    mapsSourceUrl: String(data.get('googleMapsUrl') || ''),
+    rating: data.get('rating') === '' ? null : Number(data.get('rating')),
+    reviewCount: data.get('reviewCount') === '' ? null : Number(data.get('reviewCount')),
+    verified: String(data.get('provider')) === 'google'
   };
   const existingIndex = day.stops.findIndex((item) => item.id === stopId);
+  const previousReminder = existingIndex >= 0 ? day.stops[existingIndex].reminderAt : '';
   if (existingIndex >= 0) day.stops[existingIndex] = { ...day.stops[existingIndex], ...stop };
   else day.stops.push(stop);
   day.stops.sort((a, b) => String(a.time).localeCompare(String(b.time)));
   closeModal();
   await persistTrip(trip, existingIndex >= 0 ? 'Durak güncellendi.' : 'Durak rotana eklendi.');
+  if (window.RoamlyNative?.isNative && previousReminder !== stop.reminderAt) {
+    const reminderId = reminderIdFor(stop.id);
+    try {
+      if (previousReminder) await window.RoamlyNative.cancelTripReminder(reminderId);
+      if (stop.reminderAt && new Date(stop.reminderAt).getTime() > Date.now()) {
+        await window.RoamlyNative.scheduleTripReminder({ id: reminderId, title: `${stop.time} · ${stop.title}`, body: stop.address || `${trip.destination} planındaki durağın yaklaşıyor.`, at: stop.reminderAt, extra: { tripId: trip.id, dayId: day.id, stopId: stop.id } });
+        toast('Durak kaydedildi ve telefon hatırlatıcısı kuruldu.');
+      }
+    } catch (error) { console.error(error); toast('Durak kaydedildi; bildirim izni verilmediği için hatırlatıcı kurulamadı.', 'error'); }
+  }
   renderTripDetail();
+});
+
+document.addEventListener('submit', async (event) => {
+  if (event.target.id !== 'friendSearchForm') return;
+  event.preventDefault();
+  const query = String(new FormData(event.target).get('query') || '').trim();
+  try {
+    state.profileResults = await searchProfiles(query, state.session);
+    await renderFriends({ refresh: false });
+    if (!state.profileResults.length) toast('Bu aramayla eşleşen Roamly hesabı bulunamadı.');
+  } catch (error) { console.error(error); toast(error.message || 'Arama yapılamadı.', 'error'); }
 });
 
 $('#journalForm').addEventListener('submit', async (event) => {
@@ -652,6 +872,21 @@ $('#importInput').addEventListener('change', async (event) => {
     renderAll();
     toast(`${trips.length} seyahat içe aktarıldı.`);
   } catch { toast('Bu dosya geçerli bir Roamly yedeği değil.', 'error'); }
+  event.target.value = '';
+});
+
+document.addEventListener('change', async (event) => {
+  if (!event.target.matches('[data-google-saved-input]')) return;
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const places = parseGoogleSavedPlaces(JSON.parse(await file.text()));
+    if (!places.length) throw new Error('no places');
+    const trip = activeTrip();
+    const existing = new Set((trip.savedPlaces || []).map((place) => `${place.name}|${place.lat}|${place.lng}`));
+    trip.savedPlaces = [...(trip.savedPlaces || []), ...places.filter((place) => !existing.has(`${place.name}|${place.lat}|${place.lng}`))].slice(0, 500);
+    await persistTrip(trip, `${places.length} Google kaydı seyahatine getirildi.`);
+  } catch (error) { console.error(error); toast('Bu dosyada okunabilir Google kayıtlı yerleri bulunamadı.', 'error'); }
   event.target.value = '';
 });
 

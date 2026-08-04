@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.112.0";
 import { contentText, mapsSources, matchPlaceSource } from "./gemini.js";
+import { targetStopsForPace, validatePlanShape } from "./plan-validation.js";
 import { optimizeDayStops } from "./route.js";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
@@ -82,17 +83,16 @@ function numberValue(value: unknown, minimum: number, maximum: number) {
 }
 
 function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>, mapSources: Array<Record<string, string>>) {
-  if (!value || typeof value !== "object") throw new Error("Planner response is empty");
+  const { expectedStops } = validatePlanShape(value, input);
   const trip = value as Record<string, unknown>;
-  if (!Array.isArray(trip.days) || trip.days.length !== input.days) throw new Error("Planner returned the wrong number of days");
+  const rawDays = trip.days as Array<Record<string, unknown>>;
   return {
     title: String(trip.title || input.destination).slice(0, 100),
     country: String(trip.country || "").slice(0, 100),
     summary: String(trip.summary || "").slice(0, 360),
-    days: trip.days.map((rawDay, dayIndex) => {
+    days: rawDays.map((rawDay, dayIndex) => {
       const day = rawDay as Record<string, unknown>;
-      if (!Array.isArray(day.stops)) throw new Error("Planner returned an invalid day");
-      const stops = day.stops.slice(0, 5).map((rawStop) => {
+      const stops = (day.stops as Array<Record<string, unknown>>).slice(0, expectedStops).map((rawStop) => {
         const stop = rawStop as Record<string, unknown>;
         const importance = ["must-see", "local", "optional"].includes(String(stop.importance)) ? String(stop.importance) : "optional";
         const source = matchPlaceSource(stop, mapSources);
@@ -109,6 +109,7 @@ function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>, 
           why: String(stop.why || "").slice(0, 260),
           travelerNote: String(stop.travelerNote || "").slice(0, 260),
           importance,
+          mealRole: String(stop.mealRole),
           address: String(stop.address || "").slice(0, 200),
           lat: lat !== null && lng !== null ? lat : null,
           lng: lat !== null && lng !== null ? lng : null,
@@ -119,8 +120,7 @@ function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>, 
           mapsSourceName: source?.title || "",
           mapsSourceUrl: source?.url || ""
         };
-      }).filter((stop) => stop.title);
-      if (stops.length < 3) throw new Error("Planner returned too few stops for a day");
+      });
       return {
         id: crypto.randomUUID(),
         date: addDays(input.startDate, dayIndex),
@@ -173,10 +173,10 @@ async function geminiRequest(path: string, apiKey: string, body: unknown) {
   }
 }
 
-function finalSchema(days: number) {
+function finalSchema(days: number, stopsPerDay: number) {
   const stop = {
     type: "object",
-    required: ["time", "title", "query", "mapSourceName", "category", "duration", "notes", "why", "travelerNote", "importance", "address", "lat", "lng"],
+    required: ["time", "title", "query", "mapSourceName", "category", "duration", "notes", "why", "travelerNote", "importance", "mealRole", "address", "lat", "lng"],
     properties: {
       time: { type: "string", description: "24-hour HH:MM" },
       title: { type: "string" },
@@ -188,6 +188,7 @@ function finalSchema(days: number) {
       why: { type: "string" },
       travelerNote: { type: "string" },
       importance: { type: "string", enum: ["must-see", "local", "optional"] },
+      mealRole: { type: "string", enum: ["Breakfast", "Lunch", "Dinner", "None"] },
       address: { type: "string" },
       lat: { type: "number", nullable: true, description: "Latitude copied from the Maps brief, or null" },
       lng: { type: "number", nullable: true, description: "Longitude copied from the Maps brief, or null" }
@@ -210,7 +211,7 @@ function finalSchema(days: number) {
           properties: {
             title: { type: "string" },
             theme: { type: "string" },
-            stops: { type: "array", minItems: 3, maxItems: 5, items: stop }
+            stops: { type: "array", minItems: stopsPerDay, maxItems: stopsPerDay, items: stop }
           }
         }
       }
@@ -243,14 +244,13 @@ Deno.serve(async (request: Request) => {
       .select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", since);
     if (countError) throw new RequestError("AI kullanım sınırı şu anda kontrol edilemiyor.", 503);
     if ((count || 0) >= 3) throw new RequestError("Ücretsiz AI planı günlük sınırına ulaştın. 24 saat sonra yeniden deneyebilirsin.", 429);
-    const { error: claimError } = await supabase.from("ai_plan_requests").insert({ user_id: user.id, request_bucket: Math.floor(Date.now() / 60_000) });
-    if (claimError?.code === "23505") throw new RequestError("Yeni bir AI planı oluşturmadan önce bir dakika bekle.", 429);
-    if (claimError) throw new RequestError("AI kullanım hakkı ayrılamadı. Lütfen yeniden dene.", 503);
 
     const generatePath = `/models/${encodeURIComponent(model)}:generateContent`;
-    const mapsPrompt = `Create an English planning brief for an optimized ${input.days}-day itinerary in ${input.destination}, starting ${input.startDate}. Traveler style: ${input.style}. Pace: ${input.pace}. Special note: ${input.note || "none"}.
+    const stopsPerDay = targetStopsForPace(input.pace);
+    const experienceStops = stopsPerDay - 3;
+    const mapsPrompt = `Create an English planning brief for a complete, optimized ${input.days}-day itinerary in ${input.destination}, starting ${input.startDate}. Traveler style: ${input.style}. Pace: ${input.pace}. Special note: ${input.note || "none"}.
 
-Use Google Maps grounding for every named venue. Research and select the essential museums and cultural landmarks that genuinely matter, respected local favorites, and useful food or rest stops. Select 3-5 stops per day and group each day into one or two adjacent neighborhoods. Minimize backtracking and city crisscrossing. Preserve realistic morning, lunch/rest, afternoon, and evening timing. Include no more than one major museum per day unless requested. For each stop, give the exact Google Maps place name, neighborhood, sensible duration, why it belongs, and only recurring traveler advice, common complaints, or reservation caveats supported by Maps data. Clearly distinguish place facts from recurring opinions. Include latitude and longitude only when Maps explicitly supplies them. Never invent coordinates, a review, or quote a reviewer. Do not guarantee opening hours, tickets, prices, or availability. Return a concise day-by-day planning brief, not JSON.`;
+Use Google Maps grounding for every named venue. Select exactly ${stopsPerDay} unique venues per day: exactly one Breakfast venue, one Lunch venue, one Dinner venue, and exactly ${experienceStops} cultural, landmark, neighborhood, nature, shopping, cafe/rest, or local-favorite experiences. Never repeat a venue anywhere in the trip. Group each day into one or two adjacent neighborhoods, choosing meal venues close to that day's route rather than near a distant hotel. Minimize backtracking and city crisscrossing. Preserve realistic breakfast, morning, lunch/rest, afternoon, and dinner timing. Include essential museums and cultural landmarks that genuinely matter, but no more than one major museum per day unless requested. For every venue, state its stable meal role as Breakfast, Lunch, Dinner, or None; exact Google Maps place name; neighborhood; sensible duration; why it belongs; and only recurring traveler advice, common complaints, or reservation caveats supported by Maps data. Clearly distinguish place facts from recurring opinions. Include latitude and longitude only when Maps explicitly supplies them. Never invent coordinates, a review, or quote a reviewer. Do not guarantee opening hours, tickets, prices, or availability. Return a concise day-by-day planning brief, not JSON.`;
     const mapsResponse = await geminiRequest(generatePath, apiKey, {
       contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
       tools: [{ googleMaps: {} }]
@@ -268,12 +268,14 @@ Pace: ${input.pace}
 Traveler note: ${input.note || "none"}
 
 Rules:
-- Exactly ${input.days} days and 3-5 stops per day.
-- Use only venues named in the Google Maps source list below.
-- mapSourceName must exactly copy the matching source name. Never invent a source name.
+- Exactly ${input.days} days and exactly ${stopsPerDay} unique venues per day.
+- Every day must contain exactly one Breakfast, one Lunch, and one Dinner mealRole. Every other stop must use mealRole None.
+- Never repeat a venue anywhere in the trip, even on another day.
+- Use only venues named in the Google Maps grounded brief below.
+- mapSourceName must exactly copy the matching Google Maps source name when that citation exists. Use an empty string when the brief has no matching citation; never invent a source name.
 - lat and lng must copy explicit coordinates from the Google Maps brief; otherwise both must be null. Never infer or invent coordinates.
 - Keep each day within one or two adjacent neighborhoods and do not reorder into backtracking.
-- Include meals/rest when useful, but only if there is a matching Maps source.
+- Place Breakfast before the morning experiences, Lunch near midday, and Dinner last. Meal venues must fit the day's neighborhood route.
 - No more than one major museum per day unless the traveler explicitly asked otherwise.
 - travelerNote must paraphrase only recurring advice supported by the research or Maps brief. If none exists, use an empty string. Never fabricate or quote a traveler.
 - Never claim live opening hours, prices, ticket availability, safety, or weather. In notes, tell the user to recheck time-sensitive details when relevant.
@@ -283,13 +285,13 @@ GOOGLE MAPS SOURCE NAMES:
 ${sourceNames}
 
 GOOGLE MAPS GROUNDED AND OPTIMIZED BRIEF:
-${mapsText.slice(0, 20_000)}`;
+${mapsText.slice(0, 32_000)}`;
     const finalResponse = await geminiRequest(generatePath, apiKey, {
       contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
       generationConfig: {
         temperature: 0.15,
         responseMimeType: "application/json",
-        responseSchema: finalSchema(input.days)
+        responseSchema: finalSchema(input.days, stopsPerDay)
       }
     });
     const finalText = finalResponse?.candidates?.[0]?.content?.parts?.map((part: Record<string, unknown>) => part.text || "").join("") || "";
@@ -297,8 +299,14 @@ ${mapsText.slice(0, 20_000)}`;
     const stops = trip.days.flatMap((day) => day.stops);
     const verifiedCount = stops.filter((stop) => stop.verified).length;
     const coordinateCount = stops.filter((stop) => stop.lat !== null && stop.lng !== null).length;
-    const optimizedDayCount = trip.days.filter((day) => day.stops.filter((stop) => stop.lat !== null && stop.lng !== null).length >= 2).length;
+    const optimizedDayCount = trip.days.filter((day) => day.stops.length >= 2 && day.stops.every((stop) => stop.lat !== null && stop.lng !== null)).length;
     const researchSources = mapSources.slice(0, 12);
+
+    // Only a complete, validated itinerary consumes one of the user's three
+    // successful daily plans. Provider, timeout and formatting failures do not.
+    const { error: claimError } = await supabase.from("ai_plan_requests").insert({ user_id: user.id, request_bucket: Math.floor(Date.now() / 60_000) });
+    if (claimError?.code === "23505") throw new RequestError("Yeni bir AI planı oluşturmadan önce bir dakika bekle.", 429);
+    if (claimError) throw new RequestError("AI kullanım hakkı ayrılamadı. Lütfen yeniden dene.", 503);
 
     return json({
       trip: {
@@ -310,6 +318,8 @@ ${mapsText.slice(0, 20_000)}`;
           researched: true,
           verifiedPlaces: verifiedCount,
           totalPlaces: stops.length,
+          stopsPerDay,
+          mealsPerDay: 3,
           routeOptimized: optimizedDayCount > 0,
           routeSequenced: true,
           routeMethod: optimizedDayCount > 0 ? "Google Maps grounding plus coordinate ordering" : "Google Maps grounded neighborhood sequencing",

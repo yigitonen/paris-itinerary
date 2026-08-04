@@ -1,6 +1,6 @@
-const CACHE='roamly-v2.1.0';
+const CACHE='roamly-v3.0.0';
 const CORE=[
-  './','./index.html','./app.html','./privacy.html','./support.html','./manifest.webmanifest',
+  './','./index.html','./privacy.html','./support.html','./manifest.webmanifest',
   './icons/icon-192.webp','./icons/icon-512.webp','./assets/vendor/lucide.min.js',
   './assets/media/rome.jpg','./assets/media/lisbon.jpg','./assets/media/paris.jpg',
   './assets/media/cappadocia.jpg','./assets/media/barcelona.jpg','./assets/media/food.jpg',
