@@ -31,7 +31,7 @@
 
 ## Before signing and store submission
 
-- [ ] Add `AGENTIC_API_KEY` to the Supabase Edge Function secrets and complete a signed-in AI plan smoke test.
+- [ ] Add a current `agentrouter.to` Agentic API key (`aak_…`) as the `AGENTIC_API_KEY` Supabase Edge Function secret and complete a signed-in AI plan smoke test. Do not use an `agentrouter.org` coding-proxy token.
 - [ ] Enable Supabase leaked-password protection for email authentication.
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.

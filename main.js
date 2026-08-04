@@ -21,6 +21,13 @@ const completion = (trip) => {
   const budget = Number(trip.budgetTotal) > 0 ? 1 : 0;
   return Math.min(100, Math.round(((planned + budget) / ((trip.days?.length || 1) + 1)) * 100));
 };
+const safeHttpUrl = (value) => {
+  try {
+    const url = new URL(String(value));
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch { return ''; }
+};
+const importanceLabel = (value) => ({ 'must-see': 'Önemli durak', local: 'Yerel seçim', optional: 'Esnek durak' }[value] || '');
 
 const state = {
   session: null,
@@ -172,6 +179,31 @@ function renderSettings() {
   icons();
 }
 
+function stopMapsUrl(stop, trip) {
+  const query = Number.isFinite(stop.lat) && Number.isFinite(stop.lng)
+    ? `${stop.lat},${stop.lng}`
+    : stop.address || `${stop.title} ${trip.destination}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function renderStop(stop, index, trip, day) {
+  const importance = importanceLabel(stop.importance);
+  const reviews = Number(stop.reviewCount) > 0 ? ` · ${Number(stop.reviewCount).toLocaleString('tr-TR')} değerlendirme` : '';
+  const rating = Number(stop.rating) > 0 ? `<span class="stop-badge rating-badge"><i data-lucide="star"></i>${Number(stop.rating).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}${reviews}</span>` : '';
+  const travel = Number(stop.travelFromPreviousMinutes) > 0
+    ? `<span class="stop-leg"><i data-lucide="footprints"></i>${Number(stop.travelFromPreviousMinutes)} dk · ${Number(stop.travelFromPreviousKm).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} km tahmini yürüyüş</span>`
+    : '';
+  return `<div class="stop-item"><time class="stop-time">${escapeHtml(stop.time || '—')}</time><span class="stop-dot">${index + 1}</span><article class="stop-card"><div class="stop-content">${travel}<div class="stop-badges">${importance ? `<span class="stop-badge importance-${escapeHtml(stop.importance)}">${escapeHtml(importance)}</span>` : ''}${stop.verified ? '<span class="stop-badge verified-badge"><i data-lucide="badge-check"></i>Konumu doğrulandı</span>' : ''}${rating}</div><h3>${escapeHtml(stop.title)}</h3><p class="stop-note">${escapeHtml(stop.notes || stop.address || 'Not eklenmedi.')}</p>${stop.why ? `<p class="stop-insight"><strong>Neden burada?</strong>${escapeHtml(stop.why)}</p>` : ''}${stop.travelerNote ? `<p class="stop-insight traveler-insight"><strong>Gezginlerden ortak not</strong>${escapeHtml(stop.travelerNote)}</p>` : ''}<small>${escapeHtml(stop.category || 'Durak')}${stop.duration ? ` · ${escapeHtml(stop.duration)}` : ''}${stop.address ? ` · ${escapeHtml(stop.address)}` : ''}</small></div><div class="stop-tools"><a href="${stopMapsUrl(stop, trip)}" target="_blank" rel="noopener" aria-label="Haritada aç"><i data-lucide="navigation"></i></a><button data-edit-stop="${stop.id}" data-day-id="${day.id}" aria-label="Durağı düzenle"><i data-lucide="pencil"></i></button></div></article></div>`;
+}
+
+function renderEvidenceCard(trip) {
+  const sources = (trip.researchSources || []).map((source) => ({ ...source, url: safeHttpUrl(source.url) })).filter((source) => source.url);
+  if (!trip.plannerMeta?.researched && !sources.length) return '';
+  const verified = Number(trip.plannerMeta?.verifiedPlaces || 0);
+  const total = Number(trip.plannerMeta?.totalPlaces || 0);
+  return `<section class="trip-side-card evidence-card"><span class="eyebrow">PLAN GÜVENİ</span><h3>Araştırıldı, sonra sıralandı.</h3><p>${escapeHtml(trip.researchSummary || 'Önemli yerler, yerel öneriler ve gezgin deneyimleri kaynaklarla birlikte değerlendirildi.')}</p><div class="evidence-facts"><span><i data-lucide="search-check"></i>Kaynak destekli araştırma</span><span><i data-lucide="map-pinned"></i>${verified}/${total || verified} konum doğrulandı</span><span><i data-lucide="route"></i>Gün içi rota optimize edildi</span></div>${sources.length ? `<div class="source-list">${sources.slice(0, 5).map((source) => `<a href="${source.url}" target="_blank" rel="noopener"><span>${escapeHtml(source.title || new URL(source.url).hostname)}</span><i data-lucide="arrow-up-right"></i></a>`).join('')}</div>` : ''}<p class="evidence-caveat"><i data-lucide="info"></i>Saat, bilet ve kapanış bilgilerini gitmeden önce yeniden kontrol et. Gezgin notları tekil alıntı değil, tekrar eden deneyimlerin özetidir.</p></section>`;
+}
+
 function renderTripDetail() {
   const trip = activeTrip();
   if (!trip) { showRoute('trips'); return; }
@@ -180,8 +212,7 @@ function renderTripDetail() {
   const spent = totalSpent(trip);
   const budget = Number(trip.budgetTotal || 0);
   const progress = budget ? Math.min(100, Math.round(spent / budget * 100)) : 0;
-  const mapsUrl = (stop) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.address || `${stop.title} ${trip.destination}`)}`;
-  $('#tripDetail').innerHTML = `<section class="trip-hero" style="background-image:url('${coverUrl(trip)}')"><button class="icon-button trip-back" data-route="trips" aria-label="Seyahatlere dön"><i data-lucide="arrow-left"></i></button><div class="trip-hero-tools"><button class="secondary-button" data-action="export-trip"><i data-lucide="download"></i><span>Yedekle</span></button><button class="secondary-button" data-action="delete-trip"><i data-lucide="trash-2"></i><span>Sil</span></button></div><div class="trip-hero-copy"><span class="eyebrow">${statusLabel(trip)} · ${escapeHtml(trip.style.toLocaleUpperCase('tr-TR'))}</span><h1>${escapeHtml(trip.destination)}</h1><p>${formatRange(trip)} · ${dayCountText(trip)} · ${escapeHtml(trip.pace)} tempo${trip.summary ? ` · ${escapeHtml(trip.summary)}` : ''}</p></div></section><div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${item.id}"><strong>${index + 1}. gün</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })}</small></button>`).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${day.id}"><i data-lucide="plus"></i> Durak ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => `<div class="stop-item"><time class="stop-time">${escapeHtml(stop.time || '—')}</time><span class="stop-dot">${index + 1}</span><article class="stop-card"><div><h3>${escapeHtml(stop.title)}</h3><p>${escapeHtml(stop.notes || stop.address || 'Not eklenmedi.')}</p><small>${escapeHtml(stop.category || 'Durak')}${stop.duration ? ` · ${escapeHtml(stop.duration)}` : ''}</small></div><div class="stop-tools"><a href="${mapsUrl(stop)}" target="_blank" rel="noopener" aria-label="Haritada aç"><i data-lucide="navigation"></i></a><button data-edit-stop="${stop.id}" data-day-id="${day.id}" aria-label="Durağı düzenle"><i data-lucide="pencil"></i></button></div></article></div>`).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün sana ait.</h3><p>İlk durağı ekle veya gelişmiş rota stüdyosunda yerlerini optimize et.</p><button class="primary-button" data-open-stop="${day.id}">İlk durağı ekle</button></div>`}</div></section><aside class="trip-side"><section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${trip.currency} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${trip.currency} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm"><input name="title" required placeholder="Harcama"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${expense.id}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card studio-card"><span class="eyebrow">GELİŞMİŞ ARAÇLAR</span><h3>Rota stüdyosu</h3><p>Durakları sürükle, gerçek haritada gör, yürüyüşleri sırala, rezervasyon ve anılarını aynı planla yönet.</p><button class="primary-button" data-action="open-studio"><i data-lucide="route"></i> Stüdyoyu aç</button></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
+  $('#tripDetail').innerHTML = `<section class="trip-hero" style="background-image:url('${coverUrl(trip)}')"><button class="icon-button trip-back" data-route="trips" aria-label="Seyahatlere dön"><i data-lucide="arrow-left"></i></button><div class="trip-hero-tools"><button class="secondary-button" data-action="export-trip"><i data-lucide="download"></i><span>Yedekle</span></button><button class="secondary-button" data-action="delete-trip"><i data-lucide="trash-2"></i><span>Sil</span></button></div><div class="trip-hero-copy"><span class="eyebrow">${statusLabel(trip)} · ${escapeHtml(trip.style.toLocaleUpperCase('tr-TR'))}</span><h1>${escapeHtml(trip.destination)}</h1><p>${formatRange(trip)} · ${dayCountText(trip)} · ${escapeHtml(trip.pace)} tempo${trip.summary ? ` · ${escapeHtml(trip.summary)}` : ''}</p></div></section><div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${item.id}"><strong>${index + 1}. gün</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })}</small></button>`).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${day.id}"><i data-lucide="plus"></i> Durak ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün sana ait.</h3><p>İlk durağı ekle veya gelişmiş rota stüdyosunda yerlerini optimize et.</p><button class="primary-button" data-open-stop="${day.id}">İlk durağı ekle</button></div>`}</div></section><aside class="trip-side">${renderEvidenceCard(trip)}<section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${trip.currency} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${trip.currency} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm"><input name="title" required placeholder="Harcama"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${expense.id}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card studio-card"><span class="eyebrow">GELİŞMİŞ ARAÇLAR</span><h3>Rota stüdyosu</h3><p>Durakları sürükle, gerçek haritada gör, yürüyüşleri sırala, rezervasyon ve anılarını aynı planla yönet.</p><button class="primary-button" data-action="open-studio"><i data-lucide="route"></i> Stüdyoyu aç</button></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
   icons();
 }
 
@@ -327,7 +358,7 @@ function seedAdvancedStudio(trip) {
         title: stop.title,
         cat: stop.category,
         duration: stop.duration || '',
-        note: stop.notes || '',
+        note: [stop.notes, stop.travelerNote].filter(Boolean).join('\n\n'),
         lat: stop.lat ?? null,
         lng: stop.lng ?? null
       }))

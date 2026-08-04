@@ -34,9 +34,21 @@ The live schema is defined in
 owner-scoped trips and the Locals waitlist, both protected by row-level
 security.
 
-Before using AI planning, add `AGENTIC_API_KEY` as a Supabase Edge Function
-secret. Optional secrets are `AGENTIC_API_BASE_URL`,
-`AGENTROUTER_ROUTE_KEY`, and `AGENTROUTER_MODEL`. Deploy with:
+AI planning uses the current capability API at `agentrouter.to`. Add an
+Agentic API key issued by that service (current keys use the `aak_` format) as
+the `AGENTIC_API_KEY` Supabase Edge Function secret. Tokens from
+`agentrouter.org` are coding-tool proxy tokens and are not compatible with the
+travel planner.
+
+The planner first researches official/credible destination guidance, then asks
+the model for a neighborhood-coherent draft, verifies every venue through a
+places search, and finally optimizes coordinates without moving a morning,
+afternoon, or evening stop into the wrong part of the day. Traveler guidance is
+stored as a paraphrased recurring pattern, never as a fabricated quote.
+
+Optional secrets are `AGENTIC_API_BASE_URL`,
+`AGENTROUTER_MODEL_ROUTE_KEY`, `AGENTROUTER_MODEL`,
+`AGENTROUTER_SEARCH_ROUTE_KEY`, and `AGENTROUTER_PLACES_ROUTE_KEY`. Deploy with:
 
 ```sh
 supabase functions deploy plan-trip

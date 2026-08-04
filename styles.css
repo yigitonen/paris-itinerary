@@ -209,6 +209,7 @@ body.offline .offline-notice { display: block; }
 .trip-hero-copy p { color: rgba(255,255,255,.76); margin: 0; font-size: 12px; }
 .trip-summary { display: grid; grid-template-columns: 1fr 300px; gap: 16px; margin-top: 16px; }
 .itinerary-card, .trip-side-card { border: 1px solid var(--line); background: var(--surface); border-radius: 21px; padding: 22px; }
+.itinerary-card, .trip-side, .trip-side-card, .stop-card { min-width: 0; }
 .day-tabs { display: flex; overflow: auto; gap: 7px; padding-bottom: 4px; scrollbar-width: none; }
 .day-tabs::-webkit-scrollbar { display: none; }
 .day-tab { min-width: 100px; border: 1px solid var(--line); background: transparent; border-radius: 12px; padding: 10px 12px; text-align: left; }
@@ -226,10 +227,22 @@ body.offline .offline-notice { display: block; }
 .stop-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--coral); color: white; font-size: 8px; font-weight: 800; z-index: 1; }
 .stop-card { border: 1px solid var(--line); border-radius: 15px; padding: 14px 15px; margin-bottom: 10px; display: flex; gap: 12px; align-items: flex-start; }
 .stop-card:hover { border-color: #bfbab0; }
-.stop-card > div { flex: 1; }
+.stop-card > div { flex: 1; min-width: 0; }
 .stop-card h3 { font: 600 16px Georgia, serif; margin: 0 0 4px; }
-.stop-card p { color: var(--muted); font-size: 9px; line-height: 1.45; margin: 0; }
+.stop-card p { color: var(--muted); font-size: 9px; line-height: 1.5; margin: 0; }
 .stop-card small { display: block; color: #9a7768; font-size: 7px; margin-top: 7px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
+.stop-leg { width: fit-content; display: flex; align-items: center; gap: 5px; margin: 0 0 9px; padding: 5px 8px; border-radius: 99px; background: #eef2eb; color: var(--forest); font-size: 7px; font-weight: 750; }
+.stop-leg svg, .stop-badge svg { width: 11px; height: 11px; }
+.stop-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.stop-badge { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 0 7px; border-radius: 99px; background: var(--surface-2); color: var(--muted); font-size: 6px; line-height: 1; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.importance-must-see { background: #fbe6df; color: #914c40; }
+.importance-local { background: #e9f1dc; color: #486136; }
+.verified-badge { background: #e9f1ee; color: #356257; }
+.rating-badge { background: #fff5d9; color: #765d18; }
+.stop-card .stop-note { margin-bottom: 8px; }
+.stop-card .stop-insight { margin-top: 7px; padding: 8px 9px; border-left: 2px solid #c7d2bd; background: #f6f7f3; border-radius: 0 8px 8px 0; }
+.stop-card .traveler-insight { border-left-color: var(--coral); background: #fff7f3; }
+.stop-insight strong { display: block; color: var(--ink); margin-bottom: 2px; font-size: 7px; letter-spacing: .04em; text-transform: uppercase; }
 .stop-tools { display: flex; gap: 5px; }
 .stop-tools a, .stop-tools button { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid var(--line); background: transparent; border-radius: 9px; color: var(--ink); }
 .stop-tools svg { width: 14px; }
@@ -239,6 +252,16 @@ body.offline .offline-notice { display: block; }
 .trip-side { display: grid; gap: 12px; align-content: start; }
 .trip-side-card h3 { font: 600 18px Georgia, serif; margin-bottom: 6px; }
 .trip-side-card > p { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.evidence-card { background: #f7f8f2; }
+.evidence-facts { display: grid; gap: 7px; margin: 15px 0; }
+.evidence-facts span { display: flex; align-items: center; gap: 7px; color: var(--forest); font-size: 8px; font-weight: 720; }
+.evidence-facts svg { width: 14px; color: #748b62; }
+.source-list { display: grid; border-top: 1px solid var(--line); }
+.source-list a { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 8px; }
+.source-list a span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-list a svg { width: 12px; color: var(--muted); }
+.trip-side-card .evidence-caveat { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; color: #836a5f; }
+.evidence-caveat svg { width: 13px; flex: 0 0 auto; margin-top: 1px; }
 .budget-total { font: 500 37px Georgia, serif; display: block; margin: 18px 0 3px; }
 .budget-track { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
 .budget-track i { display: block; height: 100%; background: var(--coral); border-radius: inherit; }
@@ -347,6 +370,7 @@ fieldset { border: 0; padding: 0; margin: 0; }
   .trip-summary { gap: 10px; margin-top: 10px; }
   .itinerary-card, .trip-side-card { padding: 17px; }
   .trip-side { grid-template-columns: 1fr; }
+  .day-head { align-items: flex-start; flex-direction: column; }
   .stop-item { grid-template-columns: 44px 22px 1fr; }
   .stop-item:after { left: 54px; }
   .stop-card { display: block; }

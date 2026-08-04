@@ -38,6 +38,9 @@ const toRow = (trip, userId) => ({
     source: trip.source || 'manual',
     note: trip.note || '',
     summary: trip.summary || '',
+    researchSummary: trip.researchSummary || '',
+    researchSources: trip.researchSources || [],
+    plannerMeta: trip.plannerMeta || null,
     days: trip.days || [],
     expenses: trip.expenses || [],
     journals: trip.journals || []
@@ -61,6 +64,9 @@ const fromRow = (row) => ({
   source: row.plan?.source || 'manual',
   note: row.plan?.note || '',
   summary: row.plan?.summary || '',
+  researchSummary: row.plan?.researchSummary || '',
+  researchSources: row.plan?.researchSources || [],
+  plannerMeta: row.plan?.plannerMeta || null,
   days: row.plan?.days || [],
   expenses: row.plan?.expenses || [],
   journals: row.plan?.journals || [],
@@ -131,4 +137,3 @@ export async function joinLocalsWaitlist({ email, city, note }, session) {
   });
   if (error) throw error;
 }
-
