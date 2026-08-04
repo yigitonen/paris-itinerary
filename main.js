@@ -476,7 +476,10 @@ document.addEventListener('click', async (event) => {
       if (!state.trips.length) { toast('Önce bir seyahat oluştur.'); return; }
       renderAll(); openModal('#journalModal');
     }
-    if (control.dataset.open === 'auth') openModal('#authModal');
+    if (control.dataset.open === 'auth') {
+      if (state.session) showRoute('settings');
+      else openModal('#authModal');
+    }
     if (control.dataset.open === 'locals') {
       const email = state.session?.user?.email || '';
       $('#localsForm').elements.email.value = email;
