@@ -6,12 +6,11 @@
 <meta name="theme-color" content="#f6f4ee"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-<meta name="apple-mobile-web-app-title" content="Tripline"/>
-<title>Tripline · your trips, day by day</title>
+<meta name="apple-mobile-web-app-title" content="Roamly Studio"/>
+<title>Roamly Studio · your trips, day by day</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #f6f4ee;
@@ -332,7 +331,7 @@
 <!-- ================= HOME: my trips ================= -->
 <div class="wrap" id="homeView">
   <header>
-    <h1><span class="em">🧳</span> Tripline</h1>
+    <h1><span class="em">🧳</span> Roamly <small style="font-size:.5em;font-weight:700;color:var(--muted)">Studio</small></h1>
     <div class="subtitle">Every trip, day by day. Plan it with whoever you're going with, live it on the ground, then relive it as a recap.</div>
     <div class="acct" id="accountRow"></div>
     <div class="tripbar" id="lifeStats"></div>
@@ -416,6 +415,7 @@
       </div>
       <div class="field" style="margin:12px 0 0"><label>Or paste a Maps link / "lat, lng"</label><input id="f-paste" placeholder="Paste from Google/Apple Maps" autocomplete="off"/></div>
       <button class="link-btn" id="fUsePrev" type="button">Use the previous stop's location</button>
+      <button class="link-btn hidden" id="fUseCurrent" type="button">◎ Use my current location</button>
       <div class="loc-hint">Tip: in Google Maps, share a place → the link contains the coordinates. Short <code>maps.app.goo.gl</code> links won't work — use the full link or paste "lat, lng".</div>
     </div>
 
@@ -519,7 +519,7 @@
 <div class="modal hidden" id="memModal">
   <div class="modal-card">
     <div class="modal-head"><h3 id="memTitle">Memory</h3><button class="icon-btn" id="memClose" aria-label="Close">✕</button></div>
-    <div class="field"><label>Photo</label><input type="file" id="memPhoto" accept="image/*"/></div>
+    <div class="field"><label>Photo</label><input type="file" id="memPhoto" accept="image/*"/><button class="btn ghost hidden" id="memCamera" type="button" style="width:100%;margin-top:8px">📷 Take or choose a photo</button></div>
     <div id="memPreviewWrap" class="hidden" style="margin-bottom:12px"><img id="memPreview" alt="" style="max-width:100%;border-radius:12px;display:block"/></div>
     <div class="field"><label>A little note</label><textarea id="memNote" placeholder="What made this stop special?"></textarea></div>
     <div class="modal-btns">
@@ -1306,9 +1306,7 @@ function deleteTrip() {
 /* ------------------------------------------------------------------ */
 /*  Memories (photo + note)                                            */
 /* ------------------------------------------------------------------ */
-function readImage(file, cb) {
-  const r = new FileReader();
-  r.onload = () => {
+function resizeMemoryImage(source, cb) {
     const img = new Image();
     img.onload = () => {
       const max = 720; let w = img.width, h = img.height;
@@ -1319,7 +1317,12 @@ function readImage(file, cb) {
       try { cb(c.toDataURL("image/jpeg", 0.7)); } catch (e) { cb(null); }
     };
     img.onerror = () => cb(null);
-    img.src = r.result;
+    img.src = source;
+}
+function readImage(file, cb) {
+  const r = new FileReader();
+  r.onload = () => {
+    resizeMemoryImage(r.result, cb);
   };
   r.onerror = () => cb(null);
   r.readAsDataURL(file);
@@ -1363,6 +1366,47 @@ $("memPhoto").addEventListener("change", e => {
     memPhoto = d; $("memPreview").src = d; $("memPreviewWrap").classList.remove("hidden");
   });
 });
+function revealNativeMemoryTools() {
+  $("memCamera").classList.toggle("hidden", !window.RoamlyNative?.isNative);
+  $("fUseCurrent").classList.toggle("hidden", !window.RoamlyNative?.getCurrentLocation);
+}
+document.addEventListener("roamly:native-ready", revealNativeMemoryTools);
+$("memCamera").addEventListener("click", async () => {
+  const button = $("memCamera");
+  try {
+    button.disabled = true;
+    const source = await window.RoamlyNative?.pickMemoryPhoto?.();
+    if (!source) return;
+    resizeMemoryImage(source, data => {
+      if (!data) { alert("Couldn't read that image."); return; }
+      memPhoto = data;
+      $("memPreview").src = data;
+      $("memPreviewWrap").classList.remove("hidden");
+    });
+  } catch (error) {
+    if (!/cancel/i.test(String(error?.message || error))) alert("The photo picker couldn't open. Please try again.");
+  } finally {
+    button.disabled = false;
+  }
+});
+revealNativeMemoryTools();
+$("fUseCurrent").addEventListener("click", async () => {
+  const button = $("fUseCurrent");
+  try {
+    button.disabled = true;
+    button.textContent = "Locating…";
+    const position = await window.RoamlyNative?.getCurrentLocation?.();
+    if (!position) return;
+    $("f-lat").value = Number(position.lat).toFixed(6);
+    $("f-lng").value = Number(position.lng).toFixed(6);
+    $("f-paste").value = "";
+  } catch (error) {
+    alert(String(error?.message || "Your current location couldn't be read."));
+  } finally {
+    button.disabled = false;
+    button.textContent = "◎ Use my current location";
+  }
+});
 $("memSave").addEventListener("click", saveMem);
 $("memCancel").addEventListener("click", closeMem);
 $("memClose").addEventListener("click", closeMem);
@@ -1394,6 +1438,20 @@ function openMemories() {
   openSheet("Memories & stamps 📸", html);
 }
 
+function nativeReminderId(tripId, dayIndex, stopIndex) {
+  const value = `${tripId}:${dayIndex}:${stopIndex}`;
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) hash = ((hash * 31) + value.charCodeAt(i)) | 0;
+  return (Math.abs(hash) % 2_000_000_000) + 1;
+}
+function stopDateTime(date, time) {
+  if (!/^\d{2}:\d{2}$/.test(String(time || ""))) return null;
+  const result = parseISO(date);
+  const [hours, minutes] = time.split(":").map(Number);
+  result.setHours(hours, minutes, 0, 0);
+  return Number.isFinite(result.getTime()) ? result : null;
+}
+
 function openBookings() {
   const t = curTrip();
   let html = `<p class="sub">Tap the box when booked, and paste a confirmation link or number.</p>`;
@@ -1401,11 +1459,15 @@ function openBookings() {
     html += `<h4>Day ${di + 1} · ${esc(fmtDay(day.date))}</h4>`;
     if (!day.stops.length) html += `<p class="sub">Nothing planned yet.</p>`;
     day.stops.forEach((st, si) => {
+      const reminder = window.RoamlyNative?.scheduleTripReminder
+        ? `<button class="mini" data-reminder="${di}:${si}" type="button">${st.reminderAt ? "✓ Reminder set" : "🔔 Remind me"}</button>`
+        : "";
       html += `<div class="bk-row">
         <button class="bk-check ${st.booked ? "on" : ""}" data-bk="${di}:${si}">${st.booked ? "✓" : ""}</button>
         <div class="bk-main">
           <div class="bk-title">${esc(st.time)} · ${esc(st.title)}</div>
           <input class="bk-conf" data-conf="${di}:${si}" placeholder="Confirmation link or number" value="${esc(st.confirm || "")}"/>
+          ${reminder}
         </div>
       </div>`;
     });
@@ -1415,6 +1477,39 @@ function openBookings() {
 
 $("sheetBack").addEventListener("click", closeSheet);
 $("sheetBody").addEventListener("click", e => {
+  const reminder = e.target.closest("[data-reminder]");
+  if (reminder) {
+    const [di, si] = reminder.dataset.reminder.split(":").map(Number);
+    const trip = curTrip(), day = trip.days[di], stop = day.stops[si];
+    const reminderId = nativeReminderId(trip.id, di, si);
+    if (stop.reminderAt) {
+      window.RoamlyNative.cancelTripReminder(reminderId).then(() => {
+        delete stop.reminderAt;
+        save();
+        reminder.textContent = "🔔 Remind me";
+      }).catch(() => alert("The reminder couldn't be removed."));
+      return;
+    }
+    const stopAt = stopDateTime(day.date, stop.time);
+    if (!stopAt || stopAt.getTime() <= Date.now()) {
+      alert("Set a future date and 24-hour time for this stop first.");
+      return;
+    }
+    const preferred = stopAt.getTime() - 2 * 60 * 60 * 1000;
+    const at = new Date(Math.max(Date.now() + 60_000, preferred));
+    window.RoamlyNative.scheduleTripReminder({
+      id: reminderId,
+      title: trip.name + " · " + stop.title,
+      body: `${stop.time} durağın yaklaşıyor. Biletini ve yol tarifini kontrol et.`,
+      at: at.toISOString(),
+      extra: { tripId: trip.id, dayIndex: di, stopIndex: si }
+    }).then(() => {
+      stop.reminderAt = at.toISOString();
+      save();
+      reminder.textContent = "✓ Reminder set";
+    }).catch(error => alert(String(error?.message || "The reminder couldn't be scheduled.")));
+    return;
+  }
   const b = e.target.closest("[data-bk]");
   if (b) {
     const [di, si] = b.dataset.bk.split(":").map(Number);
@@ -2446,7 +2541,7 @@ function drawRecap(t) {
 
   ctx.fillStyle = "rgba(255,255,255,.45)";
   ctx.font = "650 28px -apple-system, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("🧳 Tripline", W / 2, H - 56);
+  ctx.fillText("🧳 Roamly", W / 2, H - 56);
   return c;
 }
 
@@ -2459,6 +2554,20 @@ function shareRecap() {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: t.name + " — trip recap" }); return; }
       catch (e) { if (e && e.name === "AbortError") return; /* fall through to download */ }
+    }
+    const nativeShare = window.RoamlyNative?.shareRecap;
+    if (typeof nativeShare === "function") {
+      const x = tripStats(t);
+      try {
+        await nativeShare({
+          title: t.name + " — trip recap",
+          text: `${t.destination || t.name}: ${x.days} days, ${x.stops} stops, ${x.notes} memories. Planned with Roamly.`,
+          url: "https://roamly-travel.yigitonen.chatgpt.site/"
+        });
+        return;
+      } catch (e) {
+        if (/cancel/i.test(String(e?.message || e))) return;
+      }
     }
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -2516,58 +2625,95 @@ function importData(file) {
 /* ------------------------------------------------------------------ */
 /*  Google sign-in (Supabase OAuth)                                    */
 /* ------------------------------------------------------------------ */
-const SUPABASE_URL = "https://fskujzurzqjncvfrqxlr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZza3VqenVyenFqbmN2ZnJxeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTk0NjYsImV4cCI6MjA5OTA5NTQ2Nn0.TNFYgZcygfmd4FvNlrzNwFmoUqNVuX8M3zLfUidPcAA";
 let sb = null, sbUser = null;
 let cloudSaveTimer = null;
+const CLOUD_DIRTY_KEY = "roamly-studio-cloud-dirty-v1";
+
+function cloudDirtyTrips() {
+  try {
+    const value = JSON.parse(localStorage.getItem(CLOUD_DIRTY_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch (error) { return []; }
+}
+
+function setCloudDirty(tripId, dirty) {
+  const ids = cloudDirtyTrips().filter(id => id !== tripId);
+  if (dirty) ids.push(tripId);
+  if (ids.length) localStorage.setItem(CLOUD_DIRTY_KEY, JSON.stringify(ids));
+  else localStorage.removeItem(CLOUD_DIRTY_KEY);
+}
+
+async function saveStudioTripToCloud(trip) {
+  if (!sb || !sbUser || !trip || !navigator.onLine) return false;
+  const { data, error: readError } = await sb.from("trips").select("plan").eq("id", trip.id).single();
+  if (readError) throw readError;
+  const days = trip.days.map(day => ({
+    id: day.id,
+    date: day.date,
+    title: day.title,
+    theme: day.theme || "",
+    stops: day.stops.map(stop => ({
+      id: stop.id,
+      time: stop.time,
+      title: stop.title,
+      category: stop.cat || stop.category || "Durak",
+      duration: stop.duration || "",
+      notes: stop.note || stop.notes || "",
+      address: stop.address || "",
+      lat: stop.lat ?? null,
+      lng: stop.lng ?? null
+    }))
+  }));
+  const { error } = await sb.from("trips").update({ plan: { ...(data.plan || {}), days } }).eq("id", trip.id);
+  if (error) throw error;
+  setCloudDirty(trip.id, false);
+  return true;
+}
 
 function queueCloudSave() {
   if (!sb || !sbUser || !curTripId) return;
   const trip = curTrip();
   if (!trip) return;
+  setCloudDirty(trip.id, true);
+  if (!navigator.onLine) return;
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(async () => {
     try {
-      const { data, error: readError } = await sb.from("trips").select("plan").eq("id", trip.id).single();
-      if (readError) throw readError;
-      const days = trip.days.map(day => ({
-        id: day.id,
-        date: day.date,
-        title: day.title,
-        theme: day.theme || "",
-        stops: day.stops.map(stop => ({
-          id: stop.id,
-          time: stop.time,
-          title: stop.title,
-          category: stop.cat || stop.category || "Durak",
-          duration: stop.duration || "",
-          notes: stop.note || stop.notes || "",
-          address: stop.address || "",
-          lat: stop.lat ?? null,
-          lng: stop.lng ?? null
-        }))
-      }));
-      const { error } = await sb.from("trips").update({
-        plan: { ...(data.plan || {}), days }
-      }).eq("id", trip.id);
-      if (error) throw error;
+      await saveStudioTripToCloud(trip);
     } catch (error) {
       console.warn("Cloud sync failed", error);
     }
   }, 700);
 }
 
+async function flushStudioCloud() {
+  if (!sb || !sbUser || !navigator.onLine) return;
+  for (const tripId of cloudDirtyTrips()) {
+    const trip = store.trips.find(item => item.id === tripId);
+    if (!trip) { setCloudDirty(tripId, false); continue; }
+    try { await saveStudioTripToCloud(trip); }
+    catch (error) { console.warn("Cloud sync retry failed", error); break; }
+  }
+}
+
+window.addEventListener("online", flushStudioCloud);
+
 function initAuth() {
-  if (typeof supabase === "undefined") { renderAccount(); return; }
-  try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
-  catch (e) { console.warn("Supabase init failed", e); renderAccount(); return; }
+  if (!window.RoamlyStudio?.supabase) {
+    window.addEventListener("roamly:studio-auth-ready", initAuth, { once: true });
+    renderAccount();
+    return;
+  }
+  sb = window.RoamlyStudio.supabase;
   sb.auth.onAuthStateChange((_evt, session) => {
     sbUser = session ? session.user : null;
     renderAccount(); renderGImport();
+    if (sbUser) flushStudioCloud();
   });
   sb.auth.getSession().then(({ data: d }) => {
     sbUser = d.session ? d.session.user : null;
     renderAccount(); renderGImport();
+    if (sbUser) flushStudioCloud();
   });
 }
 function isGoogleUser() {
@@ -2576,10 +2722,7 @@ function isGoogleUser() {
 }
 async function signInGoogle() {
   if (!sb) { alert("Sign-in isn't available right now (offline or blocked)."); return; }
-  const { error } = await sb.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: location.origin + location.pathname }
-  });
+  const { error } = await window.RoamlyStudio.startGoogleOAuth(location.href);
   if (error) alert("Couldn't start Google sign-in: " + error.message);
 }
 async function signOutGoogle() {
@@ -2686,7 +2829,7 @@ $("tripSections").addEventListener("click", e => {
   window.scrollTo(0, 0);
 });
 $("newTripBtn").addEventListener("click", () => openTripModal(null));
-$("hExport").addEventListener("click", () => download(store, "tripline-backup.json"));
+$("hExport").addEventListener("click", () => download(store, "roamly-backup.json"));
 $("hImport").addEventListener("click", () => $("importFile").click());
 $("importFile").addEventListener("change", e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; });
 
@@ -2804,5 +2947,7 @@ renderAccount();
 renderGImport();
 initAuth();
 </script>
+<script type="module" src="studio-bridge.js"></script>
+<script type="module" src="native.js"></script>
 </body>
 </html>

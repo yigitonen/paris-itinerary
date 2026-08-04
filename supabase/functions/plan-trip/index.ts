@@ -8,9 +8,6 @@ const API_ROOT = "https://generativelanguage.googleapis.com/v1beta";
 
 const allowedOrigins = new Set([
   "https://roamly-travel.yigitonen.chatgpt.site",
-  "https://yigitonen.github.io",
-  "http://localhost",
-  "http://127.0.0.1:5173",
   "capacitor://localhost"
 ]);
 
@@ -27,7 +24,8 @@ function corsHeaders(request: Request) {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin"
   };
-  if (allowedOrigins.has(origin)) headers["Access-Control-Allow-Origin"] = origin;
+  const localDevelopmentOrigin = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin);
+  if (allowedOrigins.has(origin) || localDevelopmentOrigin) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 

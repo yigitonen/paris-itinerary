@@ -26,6 +26,9 @@
 - [x] Production Supabase schema with owner-scoped row-level security.
 - [x] Protected AI Edge Function deployed; no provider secret is bundled in the client.
 - [x] Guest mode, cloud account flow, trip editing, budget, journal, export/import, and route-studio handoff.
+- [x] PKCE Google/email authentication with production Sites and native callback allowlists; obsolete GitHub callbacks removed.
+- [x] Offline app shell, guest persistence, and queued signed-in edits that synchronize after reconnection.
+- [x] Native camera/photo picker, foreground location, recap sharing, local reminders, and custom deep-link integrations.
 - [x] Responsive desktop/mobile layout, keyboard-accessible dialogs, and reduced-motion support.
 - [x] Production builds and dependency audit.
 

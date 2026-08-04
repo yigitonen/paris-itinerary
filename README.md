@@ -8,7 +8,8 @@ day, tracking expenses, and keeping a private journal. The main experience is
 ## Product model
 
 - Guest mode works immediately and stores trips on the device.
-- Signing in enables private cloud sync through Supabase.
+- Signing in enables private cloud sync through Supabase. Previously opened cloud
+  trips remain editable offline and queued changes synchronize after reconnection.
 - AI planning runs only through the protected `plan-trip` Supabase Edge
   Function. The Gemini key never enters the browser or native bundle.
 - When AI is unavailable, Roamly says so and offers a blank editable plan. It
@@ -77,6 +78,7 @@ and physical-device permission testing are tracked in
 
 ## Advanced route studio
 
-The studio supports editable day plans, drag-and-drop stops, walking links,
-route optimisation, bookings, memories, recap export, and JSON backup/import.
+The Roamly Studio supports editable day plans, drag-and-drop stops, walking
+links, route optimisation, bookings, memories, native camera/location/reminder
+actions, recap sharing, and JSON backup/import.
 Changes are saved to the same cloud trip when the user is signed in.

@@ -1,7 +1,20 @@
 import './styles.css';
 import { ACTIVE_TRIP_STORAGE_KEY } from './src/config.js';
 import { COVER_IMAGES, createManualTrip } from './src/data.js';
-import { deleteTrip, getSession, joinLocalsWaitlist, loadTrips, migrateGuestTrips, saveTrip, supabase } from './src/repository.js';
+import {
+  completePkceCallback,
+  deleteTrip,
+  flushPendingTripChanges,
+  getSession,
+  joinLocalsWaitlist,
+  loadTrips,
+  migrateGuestTrips,
+  pendingTripSyncCount,
+  saveTrip,
+  sendEmailSignInLink,
+  startGoogleOAuth,
+  supabase
+} from './src/repository.js';
 import { generateTrip } from './src/planner.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -40,6 +53,8 @@ const state = {
 };
 
 let toastTimer;
+let modalReturnFocus = null;
+let loadingReturnFocus = null;
 
 function toast(message, tone = 'ok') {
   const element = $('#toast');
@@ -56,23 +71,76 @@ function setSync(label, tone = 'ready') {
   $('em', element).textContent = label;
 }
 
+function focusableElements(container) {
+  return $$('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', container)
+    .filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true' && element.offsetParent !== null);
+}
+
+function syncInteractionBlock() {
+  const shell = $('#appShell');
+  const blocked = Boolean($('.modal.open') || $('#loadingOverlay')?.classList.contains('open'));
+  shell.inert = blocked;
+  if (blocked) shell.setAttribute('aria-hidden', 'true');
+  else shell.removeAttribute('aria-hidden');
+}
+
+function focusReturnTarget(candidate) {
+  return candidate?.isConnected && candidate.offsetParent !== null && !candidate.closest('[inert]')
+    ? candidate
+    : $('#mainContent');
+}
+
 function openModal(id) {
-  $$('.modal.open').forEach((modal) => closeModal(modal));
+  const current = $('.modal.open');
+  if (current) closeModal(current, false);
   const modal = $(id);
   if (!modal) return;
+  modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  modal.inert = false;
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  syncInteractionBlock();
   icons();
-  const focusTarget = $('input:not([type="hidden"]), textarea, select, button', modal);
+  const focusTarget = $('[data-initial-focus]', modal) || focusableElements($('.modal-panel', modal))[0];
   setTimeout(() => focusTarget?.focus(), 10);
 }
 
-function closeModal(modal = $('.modal.open')) {
+function closeModal(modal = $('.modal.open'), restoreFocus = true) {
   if (!modal) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
+  modal.inert = true;
   document.body.style.overflow = '';
+  syncInteractionBlock();
+  if (restoreFocus) {
+    const target = focusReturnTarget(modalReturnFocus);
+    modalReturnFocus = null;
+    setTimeout(() => target?.focus(), 0);
+  }
+}
+
+function setLoading(open) {
+  const overlay = $('#loadingOverlay');
+  if (open) {
+    loadingReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    overlay.inert = false;
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    overlay.setAttribute('aria-busy', 'true');
+    overlay.focus();
+  } else {
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.setAttribute('aria-busy', 'false');
+    overlay.inert = true;
+  }
+  syncInteractionBlock();
+  if (!open && !$('.modal.open')) {
+    const target = focusReturnTarget(loadingReturnFocus);
+    loadingReturnFocus = null;
+    setTimeout(() => target?.focus(), 0);
+  }
 }
 
 function activeTrip() {
@@ -216,7 +284,7 @@ function renderTripDetail() {
   const spent = totalSpent(trip);
   const budget = Number(trip.budgetTotal || 0);
   const progress = budget ? Math.min(100, Math.round(spent / budget * 100)) : 0;
-  $('#tripDetail').innerHTML = `<section class="trip-hero" style="background-image:url('${coverUrl(trip)}')"><button class="icon-button trip-back" data-route="trips" aria-label="Seyahatlere dön"><i data-lucide="arrow-left"></i></button><div class="trip-hero-tools"><button class="secondary-button" data-action="export-trip"><i data-lucide="download"></i><span>Yedekle</span></button><button class="secondary-button" data-action="delete-trip"><i data-lucide="trash-2"></i><span>Sil</span></button></div><div class="trip-hero-copy"><span class="eyebrow">${statusLabel(trip)} · ${escapeHtml(trip.style.toLocaleUpperCase('tr-TR'))}</span><h1>${escapeHtml(trip.destination)}</h1><p>${formatRange(trip)} · ${dayCountText(trip)} · ${escapeHtml(trip.pace)} tempo${trip.summary ? ` · ${escapeHtml(trip.summary)}` : ''}</p></div></section><div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${item.id}"><strong>${index + 1}. gün</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })}</small></button>`).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${day.id}"><i data-lucide="plus"></i> Durak ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün sana ait.</h3><p>İlk durağı ekle veya gelişmiş rota stüdyosunda yerlerini optimize et.</p><button class="primary-button" data-open-stop="${day.id}">İlk durağı ekle</button></div>`}</div></section><aside class="trip-side">${renderEvidenceCard(trip)}<section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${trip.currency} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${trip.currency} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm"><input name="title" required placeholder="Harcama"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${expense.id}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card studio-card"><span class="eyebrow">GELİŞMİŞ ARAÇLAR</span><h3>Rota stüdyosu</h3><p>Durakları sürükle, gerçek haritada gör, yürüyüşleri sırala, rezervasyon ve anılarını aynı planla yönet.</p><button class="primary-button" data-action="open-studio"><i data-lucide="route"></i> Stüdyoyu aç</button></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
+  $('#tripDetail').innerHTML = `<section class="trip-hero" style="background-image:url('${coverUrl(trip)}')"><button class="icon-button trip-back" data-route="trips" aria-label="Seyahatlere dön"><i data-lucide="arrow-left"></i></button><div class="trip-hero-tools"><button class="secondary-button" data-action="export-trip"><i data-lucide="download"></i><span>Yedekle</span></button><button class="secondary-button" data-action="delete-trip"><i data-lucide="trash-2"></i><span>Sil</span></button></div><div class="trip-hero-copy"><span class="eyebrow">${statusLabel(trip)} · ${escapeHtml(trip.style.toLocaleUpperCase('tr-TR'))}</span><h1>${escapeHtml(trip.destination)}</h1><p>${formatRange(trip)} · ${dayCountText(trip)} · ${escapeHtml(trip.pace)} tempo${trip.summary ? ` · ${escapeHtml(trip.summary)}` : ''}</p></div></section><div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${item.id}"><strong>${index + 1}. gün</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })}</small></button>`).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${day.id}"><i data-lucide="plus"></i> Durak ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün sana ait.</h3><p>İlk durağı ekle veya gelişmiş rota stüdyosunda yerlerini optimize et.</p><button class="primary-button" data-open-stop="${day.id}">İlk durağı ekle</button></div>`}</div></section><aside class="trip-side" aria-label="Seyahat özeti ve araçları">${renderEvidenceCard(trip)}<section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${trip.currency} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${trip.currency} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm" aria-label="Harcama ekle"><input name="title" required placeholder="Harcama" aria-label="Harcama adı"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar" aria-label="Harcama tutarı"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${expense.id}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card studio-card"><span class="eyebrow">GELİŞMİŞ ARAÇLAR</span><h3>Rota stüdyosu</h3><p>Durakları sürükle, gerçek haritada gör, yürüyüşleri sırala, rezervasyon ve anılarını aynı planla yönet.</p><button class="primary-button" data-action="open-studio"><i data-lucide="route"></i> Stüdyoyu aç</button></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
   icons();
 }
 
@@ -237,12 +305,15 @@ async function refreshTrips() {
   try {
     state.trips = await loadTrips(state.session);
     if (!state.activeTripId || !state.trips.some((trip) => trip.id === state.activeTripId)) state.activeTripId = state.trips[0]?.id || null;
-    setSync(state.session ? 'Bulutta güncel' : 'Bu cihazda', 'ready');
+    const pending = pendingTripSyncCount(state.session);
+    setSync(state.session
+      ? pending ? `${pending} değişiklik eşitlenecek` : navigator.onLine ? 'Bulutta güncel' : 'Çevrimdışı kopya'
+      : 'Bu cihazda', pending ? 'syncing' : 'ready');
     renderAll();
   } catch (error) {
     console.error(error);
-    setSync('Bağlantı hatası', 'error');
-    toast('Seyahatlerin yüklenemedi. Bağlantını kontrol et.', 'error');
+    setSync('Bağlantı gerekli', 'error');
+    toast(error.message || 'Seyahatlerin yüklenemedi. Bağlantını kontrol et.', 'error');
   }
 }
 
@@ -252,14 +323,16 @@ async function persistTrip(trip, successMessage) {
     const result = await saveTrip(trip, state.session, state.trips);
     state.trips = result.trips;
     state.activeTripId = result.trip.id;
-    setSync(state.session ? 'Bulutta güncel' : 'Bu cihazda', 'ready');
+    setSync(result.pendingSync ? 'Çevrimdışı kaydedildi' : state.session ? 'Bulutta güncel' : 'Bu cihazda', result.pendingSync ? 'syncing' : 'ready');
     renderAll();
-    if (successMessage) toast(successMessage);
+    if (successMessage) toast(result.pendingSync ? `${successMessage} Bağlantı gelince eşitlenecek.` : successMessage);
     return result.trip;
   } catch (error) {
     console.error(error);
     setSync('Kaydedilemedi', 'error');
-    toast('Değişiklik kaydedilemedi.', 'error');
+    toast(!navigator.onLine && state.session
+      ? 'Çevrimdışıyken bulut planındaki değişiklik kaydedilemez. Bağlantı gelince yeniden dene.'
+      : 'Değişiklik kaydedilemedi. Bağlantını kontrol edip yeniden dene.', 'error');
     throw error;
   }
 }
@@ -286,6 +359,11 @@ async function createManualFromPlanner() {
 }
 
 async function runPlanner(input) {
+  if (!navigator.onLine) {
+    openModal('#plannerModal');
+    toast('Çevrimdışıyken AI planı oluşturulamaz. Boş planla devam edebilir veya bağlantı gelince yeniden deneyebilirsin.', 'error');
+    return;
+  }
   if (!state.session) {
     sessionStorage.setItem('roamly-pending-plan', JSON.stringify(input));
     openModal('#authModal');
@@ -293,8 +371,7 @@ async function runPlanner(input) {
     return;
   }
   closeModal();
-  $('#loadingOverlay').classList.add('open');
-  $('#loadingOverlay').setAttribute('aria-hidden', 'false');
+  setLoading(true);
   try {
     const trip = await generateTrip(input);
     const saved = await persistTrip(trip);
@@ -304,11 +381,22 @@ async function runPlanner(input) {
     toast(`${saved.destination} planın hazır.`);
   } catch (error) {
     console.error(error);
-    toast(error.message || 'AI planı şu anda oluşturulamadı. Boş planla devam edebilirsin.', 'error');
+    const message = String(error?.message || '');
+    const userMessage = !navigator.onLine || /failed to fetch|network|functionsfetcherror/i.test(message)
+      ? 'AI planlama için bağlantı gerekiyor. Boş planla devam edebilir veya bağlantı gelince yeniden deneyebilirsin.'
+      : /quota|kota|429|resource exhausted/i.test(message)
+        ? 'Bugünkü AI planlama sınırına ulaşıldı. Bir süre sonra yeniden dene veya boş planla devam et.'
+        : /timeout|time.?out|zaman aşımı/i.test(message)
+          ? 'AI planlama beklenenden uzun sürdü. Yeniden dene veya boş planla devam et.'
+          : /configuration|configured|yapılandır/i.test(message)
+            ? 'AI planlama şu anda hazır değil. Boş planla devam edebilirsin.'
+            : /non-2xx/i.test(message)
+              ? 'AI planlama şu anda yanıt vermedi. Yeniden dene veya boş planla devam et.'
+              : 'Plan oluşturulamadı. Yeniden dene veya boş planla devam et.';
+    toast(userMessage, 'error');
     openModal('#plannerModal');
   } finally {
-    $('#loadingOverlay').classList.remove('open');
-    $('#loadingOverlay').setAttribute('aria-hidden', 'true');
+    setLoading(false);
   }
 }
 
@@ -447,7 +535,12 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'open-studio') seedAdvancedStudio(activeTrip());
   if (action === 'sign-in-google') {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${location.origin}${location.pathname}` } });
+    if (!navigator.onLine) { toast('Giriş yapmak için internet bağlantısı gerekiyor.', 'error'); return; }
+    const { data, error } = await startGoogleOAuth(location.href);
+    if (!error && data?.url && window.Capacitor?.isNativePlatform?.()) {
+      const { Browser } = await import('@capacitor/browser');
+      await Browser.open({ url: data.url, presentationStyle: 'popover' });
+    }
     if (error) toast(error.message, 'error');
   }
   if (action === 'sign-out') {
@@ -528,7 +621,8 @@ document.addEventListener('submit', async (event) => {
 $('#emailAuthForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const email = String(new FormData(event.currentTarget).get('email')).trim();
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${location.origin}${location.pathname}` } });
+  if (!navigator.onLine) { toast('E-posta bağlantısı göndermek için internet gerekiyor.', 'error'); return; }
+  const { error } = await sendEmailSignInLink(email, location.href);
   if (error) toast(error.message, 'error');
   else { closeModal(); toast('Giriş bağlantısı e-postana gönderildi.'); }
 });
@@ -559,17 +653,67 @@ $('#importInput').addEventListener('change', async (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeModal();
+  const modal = $('.modal.open');
+  if (!modal) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal(modal);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const panel = $('.modal-panel', modal);
+  const focusable = focusableElements(panel);
+  if (!focusable.length) {
+    event.preventDefault();
+    panel.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 
 function setOnlineState() { document.body.classList.toggle('offline', !navigator.onLine); }
-window.addEventListener('online', setOnlineState);
+async function handleOnline() {
+  setOnlineState();
+  if (!state.session) return;
+  const pending = pendingTripSyncCount(state.session);
+  if (!pending) { await refreshTrips(); return; }
+  setSync('Değişiklikler eşitleniyor', 'syncing');
+  try {
+    const completed = await flushPendingTripChanges(state.session);
+    await refreshTrips();
+    if (completed) toast(`${completed} çevrimdışı değişiklik bulutla eşitlendi.`);
+  } catch (error) {
+    console.error(error);
+    setSync('Eşitleme bekliyor', 'error');
+    toast('Çevrimdışı değişiklikler henüz eşitlenemedi. Tekrar denenecek.', 'error');
+  }
+}
+window.addEventListener('online', handleOnline);
 window.addEventListener('offline', setOnlineState);
+window.addEventListener('roamly:network', (event) => event.detail?.connected ? handleOnline() : setOnlineState());
+window.addEventListener('roamly:auth-callback', async (event) => {
+  try {
+    const { error } = await completePkceCallback(event.detail?.url);
+    if (error) throw error;
+  } catch (error) {
+    console.error(error);
+    toast('Giriş tamamlanamadı. Lütfen yeniden dene.', 'error');
+  }
+});
 setOnlineState();
 
 async function initialize() {
   icons();
   state.session = await getSession();
+  if (state.session && navigator.onLine) await flushPendingTripChanges(state.session).catch((error) => console.warn('Pending sync will retry', error));
   await refreshTrips();
   if (state.session) {
     const migrated = await migrateGuestTrips(state.session).catch(() => []);

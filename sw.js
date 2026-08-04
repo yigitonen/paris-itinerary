@@ -1,4 +1,4 @@
-const CACHE='roamly-v2.0.0';
+const CACHE='roamly-v2.1.0';
 const CORE=[
   './','./index.html','./app.html','./privacy.html','./support.html','./manifest.webmanifest',
   './icons/icon-192.webp','./icons/icon-512.webp','./assets/vendor/lucide.min.js',

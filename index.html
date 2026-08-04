@@ -23,6 +23,7 @@
   <title>Roamly — Yolculuğun tek yerde</title>
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Ana içeriğe geç</a>
   <div class="offline-notice" id="offlineNotice" role="status">Çevrimdışısın · Kaydedilmiş planların açık kalır</div>
 
   <div class="app-shell" id="appShell">
@@ -43,7 +44,7 @@
       <div class="sidebar-foot" id="sidebarFoot"></div>
     </aside>
 
-    <main class="main" id="mainContent">
+    <main class="main" id="mainContent" tabindex="-1">
       <header class="topbar">
         <button class="brand mobile-brand" data-route="home" aria-label="Roamly ana sayfa">
           <span class="brand-symbol" aria-hidden="true"><i data-lucide="route"></i></span><span>Roamly</span>
@@ -71,7 +72,7 @@
 
         <div class="home-grid">
           <section class="active-trip-card" id="activeTripCard" aria-live="polite"></section>
-          <aside class="today-card" id="todayCard"></aside>
+          <aside class="today-card" id="todayCard" aria-label="Günün planı"></aside>
         </div>
 
         <section class="home-lower" id="homeLower"></section>
@@ -111,12 +112,12 @@
     </nav>
   </div>
 
-  <div class="modal" id="plannerModal" aria-hidden="true">
-    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+  <div class="modal" id="plannerModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
     <section class="modal-panel planner-panel" role="dialog" aria-modal="true" aria-labelledby="plannerTitle">
       <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY AI</span><h2 id="plannerTitle">Seyahatini tarif et.</h2><p>İyi bir plan yeterince dolu değil; doğru ritimde olandır.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
       <form id="plannerForm" class="planner-form">
-        <label class="form-field full"><span>Şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="destination" required placeholder="Nereye gidiyorsun?" autocomplete="off"></span></label>
+        <label class="form-field full"><span>Şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="destination" required placeholder="Nereye gidiyorsun?" autocomplete="off" data-initial-focus></span></label>
         <div class="form-grid">
           <label class="form-field"><span>Başlangıç</span><span class="field"><i data-lucide="calendar-days"></i><input name="startDate" type="date" required></span></label>
           <label class="form-field"><span>Kaç gün?</span><span class="field"><i data-lucide="clock-3"></i><select name="days"><option value="2">2 gün</option><option value="3">3 gün</option><option value="4" selected>4 gün</option><option value="5">5 gün</option><option value="7">7 gün</option></select></span></label>
@@ -130,13 +131,13 @@
     </section>
   </div>
 
-  <div class="modal" id="stopModal" aria-hidden="true">
-    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+  <div class="modal" id="stopModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
     <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="stopTitle">
       <div class="modal-head"><div><span class="eyebrow">ROTAYA EKLE</span><h2 id="stopTitle">Yeni durak</h2></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
       <form id="stopForm" class="planner-form">
         <input type="hidden" name="dayId"><input type="hidden" name="stopId">
-        <label class="form-field full"><span>Yer</span><span class="field"><i data-lucide="map-pin"></i><input name="title" required placeholder="Müze, restoran, mahalle…"></span></label>
+        <label class="form-field full"><span>Yer</span><span class="field"><i data-lucide="map-pin"></i><input name="title" required placeholder="Müze, restoran, mahalle…" data-initial-focus></span></label>
         <div class="form-grid"><label class="form-field"><span>Saat</span><span class="field"><i data-lucide="clock-3"></i><input name="time" type="time" value="10:00" required></span></label><label class="form-field"><span>Kategori</span><span class="field"><i data-lucide="tag"></i><select name="category"><option>Kahve</option><option>Tarih</option><option>Sanat</option><option>Mahalle</option><option>Yemek</option><option>Doğa</option><option>Manzara</option><option>Diğer</option></select></span></label></div>
         <label class="form-field full"><span>Adres</span><span class="field"><i data-lucide="navigation"></i><input name="address" placeholder="Yol tarifi için adres"></span></label>
         <label class="form-field full"><span>Not</span><textarea name="notes" rows="3" placeholder="Rezervasyon, süre veya küçük bir hatırlatma…"></textarea></label>
@@ -145,35 +146,35 @@
     </section>
   </div>
 
-  <div class="modal" id="journalModal" aria-hidden="true">
-    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+  <div class="modal" id="journalModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
     <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="journalTitle">
       <div class="modal-head"><div><span class="eyebrow">YOLCULUK GÜNLÜĞÜ</span><h2 id="journalTitle">Bugünden ne kalsın?</h2></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
       <form id="journalForm" class="planner-form"><label class="form-field full"><span>Seyahat</span><span class="field"><i data-lucide="map"></i><select name="tripId" id="journalTripSelect" required></select></span></label><label class="form-field full"><span>Başlık</span><span class="field"><i data-lucide="type"></i><input name="title" required placeholder="Bugünün kısa adı"></span></label><label class="form-field full"><span>Notun</span><textarea name="body" rows="7" required placeholder="Bir ses, bir masa, yanlış saptığın güzel bir sokak…"></textarea></label><button class="primary-button full-button" type="submit">Anılarıma kaydet</button></form>
     </section>
   </div>
 
-  <div class="modal" id="authModal" aria-hidden="true">
-    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+  <div class="modal" id="authModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
     <section class="modal-panel auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <button class="icon-button modal-close" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button>
-      <span class="brand-symbol large" aria-hidden="true"><i data-lucide="route"></i></span><span class="eyebrow coral-text">BULUTTA GÜVENDE</span><h2 id="authTitle">Planların seninle gelsin.</h2><p>Farklı cihazlarda devam et ve AgentRouter ile gerçek AI planlama kullan.</p>
-      <button class="primary-button google-button" data-action="sign-in-google"><i data-lucide="chrome"></i> Google ile devam et</button>
+      <span class="brand-symbol large" aria-hidden="true"><i data-lucide="route"></i></span><span class="eyebrow coral-text">BULUTTA GÜVENDE</span><h2 id="authTitle">Planların seninle gelsin.</h2><p>Farklı cihazlarda devam et ve Gemini destekli gerçek AI planlama kullan.</p>
+      <button class="primary-button google-button" data-action="sign-in-google" data-initial-focus><i data-lucide="chrome"></i> Google ile devam et</button>
       <div class="divider"><span>veya</span></div>
       <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" type="submit">Giriş bağlantısı gönder</button></form>
       <p class="form-note">Şifre yok. E-postana güvenli bir giriş bağlantısı göndeririz.</p>
     </section>
   </div>
 
-  <div class="modal" id="localsModal" aria-hidden="true">
-    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+  <div class="modal" id="localsModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
     <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="localsTitle">
       <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY LOCALS · ERKEN ERİŞİM</span><h2 id="localsTitle">Şehri yaşayan biriyle tanı.</h2><p>Pazar yerini açmadan önce kimlik, güvenlik ve destek akışlarını doğru kuruyoruz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
-      <form id="localsForm" class="planner-form"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com"></span></label><label class="form-field full"><span>İlgilendiğin şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="city" required placeholder="İstanbul, Roma, Lizbon…"></span></label><label class="form-field full"><span>Ne arıyorsun?</span><textarea name="note" rows="3" placeholder="Gezginim / yerel olmak istiyorum / ikisi de"></textarea></label><button class="primary-button full-button" type="submit">Bekleme listesine katıl</button></form>
+      <form id="localsForm" class="planner-form"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" data-initial-focus></span></label><label class="form-field full"><span>İlgilendiğin şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="city" required placeholder="İstanbul, Roma, Lizbon…"></span></label><label class="form-field full"><span>Ne arıyorsun?</span><textarea name="note" rows="3" placeholder="Gezginim / yerel olmak istiyorum / ikisi de"></textarea></label><button class="primary-button full-button" type="submit">Bekleme listesine katıl</button></form>
     </section>
   </div>
 
-  <div class="loading-overlay" id="loadingOverlay" aria-hidden="true"><div><span class="brand-symbol large"><i data-lucide="sparkles"></i></span><h2>Planın şekilleniyor.</h2><p>Mahalleler, yürüyüşler ve günün ritmi dengeleniyor…</p><span class="loading-bar"><i></i></span></div></div>
+  <div class="loading-overlay" id="loadingOverlay" role="status" aria-live="polite" aria-atomic="true" aria-busy="false" aria-hidden="true" tabindex="-1" inert><div><span class="brand-symbol large" aria-hidden="true"><i data-lucide="sparkles"></i></span><h2>Planın şekilleniyor.</h2><p>Mahalleler, yürüyüşler ve günün ritmi dengeleniyor…</p><span class="loading-bar" aria-hidden="true"><i></i></span></div></div>
   <div class="toast" id="toast" role="status"><i data-lucide="circle-check"></i><span></span></div>
 
   <script vite-ignore src="assets/vendor/lucide.min.js"></script>

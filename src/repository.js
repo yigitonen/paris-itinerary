@@ -1,10 +1,69 @@
+import { Capacitor } from '@capacitor/core';
 import { createClient } from '@supabase/supabase-js';
 import { GUEST_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config.js';
 import { createDemoTrip } from './data.js';
+import { enqueueSync, isNetworkError, isOffline, readCloudCache, readSyncQueue, writeCloudCache, writeSyncQueue } from './offline.js';
+
+const NATIVE_AUTH_REDIRECT = 'roamly://localhost/';
+const NATIVE_AUTH_PROTOCOLS = new Set(['roamly:', 'capacitor:', 'ionic:']);
+
+function currentUrl(value) {
+  const candidate = value || globalThis.location?.href;
+  if (!candidate) throw new Error('An auth callback URL is required');
+  return new URL(candidate);
+}
+
+function isNativeAuthRuntime(value) {
+  return Capacitor.isNativePlatform() || NATIVE_AUTH_PROTOCOLS.has(currentUrl(value).protocol);
+}
+
+export function getAuthRedirectUrl(value) {
+  const url = currentUrl(value);
+  return isNativeAuthRuntime(url.href) ? NATIVE_AUTH_REDIRECT : `${url.origin}${url.pathname}`;
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce'
+  }
 });
+
+export function startGoogleOAuth(value) {
+  return supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: getAuthRedirectUrl(value),
+      skipBrowserRedirect: isNativeAuthRuntime(value)
+    }
+  });
+}
+
+export function sendEmailSignInLink(email, value) {
+  return supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: getAuthRedirectUrl(value) }
+  });
+}
+
+export async function completePkceCallback(callbackUrl) {
+  const url = currentUrl(callbackUrl);
+  const providerError = url.searchParams.get('error_description') || url.searchParams.get('error');
+  if (providerError) throw new Error(providerError);
+
+  const code = url.searchParams.get('code');
+  if (!code) throw new Error('Auth callback code is missing');
+  const result = await supabase.auth.exchangeCodeForSession(code);
+
+  if (globalThis.location?.href === url.href && globalThis.history?.replaceState) {
+    url.searchParams.delete('code');
+    url.searchParams.delete('sb_flow_id');
+    globalThis.history.replaceState(globalThis.history.state, '', url.toString());
+  }
+  return result;
+}
 
 const readGuestTrips = () => {
   try {
@@ -19,6 +78,10 @@ const readGuestTrips = () => {
 };
 
 const writeGuestTrips = (trips) => localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(trips));
+
+const replaceTrip = (trips, trip) => trips.some((item) => item.id === trip.id)
+  ? trips.map((item) => item.id === trip.id ? trip : item)
+  : [trip, ...trips];
 
 const toRow = (trip, userId) => ({
   id: trip.id.startsWith('demo-') ? crypto.randomUUID() : trip.id,
@@ -82,28 +145,52 @@ export async function getSession() {
 
 export async function loadTrips(session) {
   if (!session) return readGuestTrips();
-  const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
-  if (error) throw error;
-  return data.map(fromRow);
+  const userId = session.user.id;
+  const cached = readCloudCache(userId);
+  if (isOffline()) {
+    if (cached.length) return cached;
+    throw new Error('Bu hesaptaki seyahatler henüz bu cihaza indirilmedi. İnternete bağlanıp bir kez açman gerekiyor.');
+  }
+  try {
+    const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
+    if (error) throw error;
+    const trips = data.map(fromRow);
+    writeCloudCache(userId, trips);
+    return trips;
+  } catch (error) {
+    if (cached.length && isNetworkError(error)) return cached;
+    throw error;
+  }
 }
 
 export async function saveTrip(trip, session, currentTrips) {
   const nextTrip = { ...trip, updatedAt: new Date().toISOString() };
   if (!session) {
-    const next = currentTrips.some((item) => item.id === nextTrip.id)
-      ? currentTrips.map((item) => item.id === nextTrip.id ? nextTrip : item)
-      : [nextTrip, ...currentTrips];
+    const next = replaceTrip(currentTrips, nextTrip);
     writeGuestTrips(next);
     return { trip: nextTrip, trips: next };
   }
-  const row = toRow(nextTrip, session.user.id);
-  const { data, error } = await supabase.from('trips').upsert(row).select().single();
-  if (error) throw error;
-  const saved = fromRow(data);
-  const next = currentTrips.some((item) => item.id === nextTrip.id)
-    ? currentTrips.map((item) => item.id === nextTrip.id ? saved : item)
-    : [saved, ...currentTrips];
-  return { trip: saved, trips: next };
+  const userId = session.user.id;
+  const row = toRow(nextTrip, userId);
+  const localTrips = replaceTrip(currentTrips, nextTrip);
+  if (isOffline()) {
+    writeCloudCache(userId, localTrips);
+    enqueueSync(userId, { type: 'upsert', tripId: row.id, row });
+    return { trip: nextTrip, trips: localTrips, pendingSync: true };
+  }
+  try {
+    const { data, error } = await supabase.from('trips').upsert(row).select().single();
+    if (error) throw error;
+    const saved = fromRow(data);
+    const next = replaceTrip(currentTrips, saved);
+    writeCloudCache(userId, next);
+    return { trip: saved, trips: next, pendingSync: false };
+  } catch (error) {
+    if (!isNetworkError(error)) throw error;
+    writeCloudCache(userId, localTrips);
+    enqueueSync(userId, { type: 'upsert', tripId: row.id, row });
+    return { trip: nextTrip, trips: localTrips, pendingSync: true };
+  }
 }
 
 export async function deleteTrip(tripId, session, currentTrips) {
@@ -112,9 +199,49 @@ export async function deleteTrip(tripId, session, currentTrips) {
     writeGuestTrips(next);
     return next;
   }
-  const { error } = await supabase.from('trips').delete().eq('id', tripId);
-  if (error) throw error;
-  return next;
+  const userId = session.user.id;
+  if (isOffline()) {
+    writeCloudCache(userId, next);
+    enqueueSync(userId, { type: 'delete', tripId });
+    return next;
+  }
+  try {
+    const { error } = await supabase.from('trips').delete().eq('id', tripId);
+    if (error) throw error;
+    writeCloudCache(userId, next);
+    return next;
+  } catch (error) {
+    if (!isNetworkError(error)) throw error;
+    writeCloudCache(userId, next);
+    enqueueSync(userId, { type: 'delete', tripId });
+    return next;
+  }
+}
+
+export function pendingTripSyncCount(session) {
+  return session ? readSyncQueue(session.user.id).length : 0;
+}
+
+export async function flushPendingTripChanges(session) {
+  if (!session || isOffline()) return 0;
+  const userId = session.user.id;
+  const queue = readSyncQueue(userId);
+  if (!queue.length) return 0;
+  let completed = 0;
+  for (let index = 0; index < queue.length; index += 1) {
+    const mutation = queue[index];
+    const request = mutation.type === 'delete'
+      ? supabase.from('trips').delete().eq('id', mutation.tripId)
+      : supabase.from('trips').upsert(mutation.row);
+    const { error } = await request;
+    if (error) {
+      writeSyncQueue(userId, queue.slice(index));
+      throw error;
+    }
+    completed += 1;
+    writeSyncQueue(userId, queue.slice(index + 1));
+  }
+  return completed;
 }
 
 export async function migrateGuestTrips(session) {
