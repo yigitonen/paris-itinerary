@@ -2120,8 +2120,8 @@ function renderOptReview() {
     html += `<div class="opt-warn">🚨 <b>Every lookup failed</b> — ${esc(parts)}.<br/>
       “network error” usually means an ad-blocker, VPN or firewall is blocking the geocoding service;
       “HTTP 403/429” means it's rate-limiting you — wait a few minutes and retry.
-      For bullet-proof lookups, paste a <b>Google Places API key</b> in the field above (its free monthly tier
-      easily covers this) and tap “Find these places” again.</div>`;
+      For more reliable lookups, add a <b>Google Places API key</b> only if you have configured and accepted
+      its billing and quota limits, then tap “Find these places” again.</div>`;
   }
   if (opt.busy) {
     const svc = opt.searchService === "google" ? "Google Places"
