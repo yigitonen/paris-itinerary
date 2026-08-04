@@ -34,22 +34,25 @@ The live schema is defined in
 owner-scoped trips and the Locals waitlist, both protected by row-level
 security.
 
-AI planning uses Gemini 2.5 Flash. Add a Google AI Studio key as the
+AI planning uses Gemini 3.1 Flash Lite. Add a Google AI Studio key as the
 `GEMINI_API_KEY` Supabase Edge Function secret. The free tier can be used
 without placing a provider key in the client, subject to Google's current
 quotas and data-use terms. Use a key whose Google AI Studio project is on the
 Free Tier; a paid Prepay project stops serving requests when its credit balance
 reaches zero and does not automatically fall back to free usage.
 
-The planner first researches official and credible destination guidance with
-Google Search grounding. It then uses Google Maps grounding to select real
-venues and organize each day into adjacent neighborhoods, before producing a
-strict Turkish itinerary. Every grounded stop links to its Google Maps source.
+Roamly allows each signed-in user up to three AI plans in a rolling 24-hour
+window, with a one-minute cooldown, to protect the shared free allowance.
+
+The planner uses Google Maps grounding to research important museums, local
+advice and recurring traveler experience, select real venues, and organize each
+day into adjacent neighborhoods before producing a strict Turkish itinerary.
+Every Maps-matched stop links to its Google Maps source.
 Traveler guidance is stored as a paraphrased recurring pattern, never as a
 fabricated quote.
 
 The optional `GEMINI_MODEL` secret can override the default
-`gemini-2.5-flash`. Deploy with:
+`gemini-3.1-flash-lite`. Deploy with:
 
 ```sh
 supabase functions deploy plan-trip

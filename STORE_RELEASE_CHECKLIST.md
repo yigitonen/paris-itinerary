@@ -31,8 +31,8 @@
 
 ## Before signing and store submission
 
-- [ ] Return the Gemini API project to the Free Tier (the current project's Prepay balance is depleted), replace the protected `GEMINI_API_KEY` secret if Google issues a new key, and complete a signed-in AI plan smoke test.
-- [ ] Enable Supabase leaked-password protection for email authentication.
+- [x] Complete a protected end-to-end AI plan smoke test with the server-side `GEMINI_API_KEY` on Google AI Studio Free Tier.
+- [x] Passwordless email-link and Google sign-in only; no password is collected. Revisit leaked-password protection if passwords are added.
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.
 - [ ] Replace temporary signing with the production keystore and distribution certificate.

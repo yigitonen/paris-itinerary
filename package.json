@@ -6,6 +6,7 @@
   "description": "Roamly native iOS, Android and web travel companion",
   "scripts": {
     "dev": "vite",
+    "test": "node --test supabase/functions/plan-trip/*.test.js",
     "build": "vite build",
     "build:sites": "ROAMLY_SITES_BUILD=1 vite build",
     "preview": "vite preview",

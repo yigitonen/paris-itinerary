@@ -1,9 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.112.0";
-import { interactionSources, interactionText, matchPlaceSource, mergeSources } from "./gemini.js";
+import { contentText, mapsSources, matchPlaceSource } from "./gemini.js";
 import { optimizeDayStops } from "./route.js";
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 const API_ROOT = "https://generativelanguage.googleapis.com/v1beta";
 
 const allowedOrigins = new Set([
@@ -22,12 +22,13 @@ const allowedOrigins = new Set([
 
 function corsHeaders(request: Request) {
   const origin = request.headers.get("origin") || "";
-  return {
-    "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://roamly-travel.yigitonen.chatgpt.site",
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin"
   };
+  if (allowedOrigins.has(origin)) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
 }
 
 function json(body: unknown, request: Request, status = 200) {
@@ -51,8 +52,16 @@ function addDays(isoDate: string, offset: number) {
   return date.toISOString().slice(0, 10);
 }
 
+class RequestError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function validateInput(value: unknown) {
-  if (!value || typeof value !== "object") throw new Error("Missing request body");
+  if (!value || typeof value !== "object") throw new RequestError("İstek bilgileri eksik.");
   const input = value as Record<string, unknown>;
   const destination = String(input.destination || "").trim();
   const startDate = String(input.startDate || "");
@@ -60,9 +69,12 @@ function validateInput(value: unknown) {
   const style = String(input.style || "Dengeli").slice(0, 40);
   const pace = String(input.pace || "Rahat").slice(0, 40);
   const note = String(input.note || "").trim().slice(0, 600);
-  if (destination.length < 2 || destination.length > 100) throw new Error("Destination is invalid");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error("Start date is invalid");
-  if (!Number.isInteger(days) || days < 1 || days > 7) throw new Error("Days must be between 1 and 7");
+  if (destination.length < 2 || destination.length > 100) throw new RequestError("Geçerli bir şehir gir.");
+  const parsedStart = new Date(`${startDate}T12:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(parsedStart.getTime()) || parsedStart.toISOString().slice(0, 10) !== startDate) {
+    throw new RequestError("Geçerli bir başlangıç tarihi seç.");
+  }
+  if (!Number.isInteger(days) || days < 1 || days > 7) throw new RequestError("Süre 1 ile 7 gün arasında olmalı.");
   return { destination, startDate, days, style, pace, note };
 }
 
@@ -132,7 +144,7 @@ class GeminiError extends Error {
 
 async function geminiRequest(path: string, apiKey: string, body: unknown) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 38_000);
   try {
     const response = await fetch(`${API_ROOT}${path}`, {
       method: "POST",
@@ -166,8 +178,7 @@ async function geminiRequest(path: string, apiKey: string, body: unknown) {
 function finalSchema(days: number) {
   const stop = {
     type: "object",
-    additionalProperties: false,
-    required: ["time", "title", "query", "mapSourceName", "category", "duration", "notes", "why", "travelerNote", "importance", "address"],
+    required: ["time", "title", "query", "mapSourceName", "category", "duration", "notes", "why", "travelerNote", "importance", "address", "lat", "lng"],
     properties: {
       time: { type: "string", description: "24-hour HH:MM" },
       title: { type: "string" },
@@ -179,12 +190,13 @@ function finalSchema(days: number) {
       why: { type: "string" },
       travelerNote: { type: "string" },
       importance: { type: "string", enum: ["must-see", "local", "optional"] },
-      address: { type: "string" }
+      address: { type: "string" },
+      lat: { type: "number", nullable: true, description: "Latitude copied from the Maps brief, or null" },
+      lng: { type: "number", nullable: true, description: "Longitude copied from the Maps brief, or null" }
     }
   };
   return {
     type: "object",
-    additionalProperties: false,
     required: ["title", "country", "summary", "days"],
     properties: {
       title: { type: "string" },
@@ -196,7 +208,6 @@ function finalSchema(days: number) {
         maxItems: days,
         items: {
           type: "object",
-          additionalProperties: false,
           required: ["title", "theme", "stops"],
           properties: {
             title: { type: "string" },
@@ -216,12 +227,9 @@ Deno.serve(async (request: Request) => {
   try {
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Authentication required" }, request, 401);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") || "",
-      Deno.env.get("SUPABASE_ANON_KEY") || "",
-      { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } }
-    );
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_ANON_KEY") || "", {
+      global: { headers: { Authorization: authHeader } }, auth: { persistSession: false }
+    });
     const token = authHeader.slice("Bearer ".length);
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) return json({ error: "Authentication required" }, request, 401);
@@ -232,29 +240,25 @@ Deno.serve(async (request: Request) => {
     const input = validateInput(await request.json());
     const model = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
 
-    const researchPrompt = `Research ${input.destination} for an evidence-led trip plan. Answer in Turkish. Cover: official tourism guidance; essential museums and cultural landmarks; reservation or closure caveats; respected local recommendations; neighborhood geography; and recurring traveler advice or common complaints found across credible discussions. Prefer official tourism and museum sources for facts. Clearly distinguish facts from recurring opinions. Never invent or quote an individual review. Keep it under 1,200 words.`;
-    const researchResponse = await geminiRequest("/interactions", apiKey, {
-      model,
-      input: researchPrompt,
-      tools: [{ type: "google_search" }]
-    });
-    const researchText = interactionText(researchResponse);
-    const searchSources = interactionSources(researchResponse, "url_citation");
-    if (researchText.length < 80 || !searchSources.length) throw new Error("Destination research returned no usable evidence");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await supabase.from("ai_plan_requests")
+      .select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", since);
+    if (countError) throw new RequestError("AI kullanım sınırı şu anda kontrol edilemiyor.", 503);
+    if ((count || 0) >= 3) throw new RequestError("Ücretsiz AI planı günlük sınırına ulaştın. 24 saat sonra yeniden deneyebilirsin.", 429);
+    const { error: claimError } = await supabase.from("ai_plan_requests").insert({ user_id: user.id, request_bucket: Math.floor(Date.now() / 60_000) });
+    if (claimError?.code === "23505") throw new RequestError("Yeni bir AI planı oluşturmadan önce bir dakika bekle.", 429);
+    if (claimError) throw new RequestError("AI kullanım hakkı ayrılamadı. Lütfen yeniden dene.", 503);
 
+    const generatePath = `/models/${encodeURIComponent(model)}:generateContent`;
     const mapsPrompt = `Create an English planning brief for an optimized ${input.days}-day itinerary in ${input.destination}, starting ${input.startDate}. Traveler style: ${input.style}. Pace: ${input.pace}. Special note: ${input.note || "none"}.
 
-Use Google Maps grounding for every named venue. Select 3-5 stops per day and group each day into one or two adjacent neighborhoods. Minimize backtracking and city crisscrossing. Preserve realistic morning, lunch/rest, afternoon, and evening timing. Include the essential museums or landmarks that genuinely matter, but no more than one major museum per day unless requested. Balance them with strong local places. For each stop, give the exact Google Maps place name, neighborhood, sensible duration, why it belongs, and only recurring review advice or caveats supported by Maps data. Never invent a review or quote a reviewer. Do not guarantee opening hours, tickets, prices, or availability. Return a concise day-by-day planning brief, not JSON.
-
-Independent destination research to consider:
-${researchText.slice(0, 12_000)}`;
-    const mapsResponse = await geminiRequest("/interactions", apiKey, {
-      model,
-      input: mapsPrompt,
-      tools: [{ type: "google_maps" }]
+Use Google Maps grounding for every named venue. Research and select the essential museums and cultural landmarks that genuinely matter, respected local favorites, and useful food or rest stops. Select 3-5 stops per day and group each day into one or two adjacent neighborhoods. Minimize backtracking and city crisscrossing. Preserve realistic morning, lunch/rest, afternoon, and evening timing. Include no more than one major museum per day unless requested. For each stop, give the exact Google Maps place name, neighborhood, sensible duration, why it belongs, and only recurring traveler advice, common complaints, or reservation caveats supported by Maps data. Clearly distinguish place facts from recurring opinions. Include latitude and longitude only when Maps explicitly supplies them. Never invent coordinates, a review, or quote a reviewer. Do not guarantee opening hours, tickets, prices, or availability. Return a concise day-by-day planning brief, not JSON.`;
+    const mapsResponse = await geminiRequest(generatePath, apiKey, {
+      contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
+      tools: [{ googleMaps: {} }]
     });
-    const mapsText = interactionText(mapsResponse);
-    const mapSources = interactionSources(mapsResponse, "place_citation");
+    const mapsText = contentText(mapsResponse);
+    const mapSources = mapsSources(mapsResponse);
     if (mapsText.length < 80 || !mapSources.length) throw new Error("Google Maps could not ground the route");
 
     const sourceNames = mapSources.map((source) => `- ${source.title}`).join("\n");
@@ -269,6 +273,7 @@ Rules:
 - Exactly ${input.days} days and 3-5 stops per day.
 - Use only venues named in the Google Maps source list below.
 - mapSourceName must exactly copy the matching source name. Never invent a source name.
+- lat and lng must copy explicit coordinates from the Google Maps brief; otherwise both must be null. Never infer or invent coordinates.
 - Keep each day within one or two adjacent neighborhoods and do not reorder into backtracking.
 - Include meals/rest when useful, but only if there is a matching Maps source.
 - No more than one major museum per day unless the traveler explicitly asked otherwise.
@@ -279,12 +284,9 @@ Rules:
 GOOGLE MAPS SOURCE NAMES:
 ${sourceNames}
 
-GOOGLE MAPS OPTIMIZED BRIEF:
-${mapsText.slice(0, 16_000)}
-
-SEARCH-GROUNDED RESEARCH:
-${researchText.slice(0, 12_000)}`;
-    const finalResponse = await geminiRequest(`/models/${encodeURIComponent(model)}:generateContent`, apiKey, {
+GOOGLE MAPS GROUNDED AND OPTIMIZED BRIEF:
+${mapsText.slice(0, 20_000)}`;
+    const finalResponse = await geminiRequest(generatePath, apiKey, {
       contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
       generationConfig: {
         temperature: 0.15,
@@ -296,27 +298,32 @@ ${researchText.slice(0, 12_000)}`;
     const trip = normalizeTrip(parseCompletion(finalText), input, mapSources);
     const stops = trip.days.flatMap((day) => day.stops);
     const verifiedCount = stops.filter((stop) => stop.verified).length;
-    const researchSources = mergeSources(searchSources, mapSources).slice(0, 12);
+    const coordinateCount = stops.filter((stop) => stop.lat !== null && stop.lng !== null).length;
+    const optimizedDayCount = trip.days.filter((day) => day.stops.filter((stop) => stop.lat !== null && stop.lng !== null).length >= 2).length;
+    const researchSources = mapSources.slice(0, 12);
 
     return json({
       trip: {
         ...trip,
-        researchSummary: "Resmî bilgiler, önemli müzeler, yerel öneriler ve tekrar eden gezgin deneyimleri güncel web ve Google Maps kaynaklarıyla birlikte değerlendirildi.",
+        researchSummary: "Önemli müzeler, yerel öneriler ve tekrar eden gezgin deneyimleri güncel Google Maps yer verileriyle birlikte değerlendirildi.",
         researchSources,
         plannerMeta: {
           provider: model,
           researched: true,
           verifiedPlaces: verifiedCount,
           totalPlaces: stops.length,
-          routeOptimized: true,
-          routeMethod: "Google Maps grounding",
+          routeOptimized: optimizedDayCount > 0,
+          routeSequenced: true,
+          routeMethod: optimizedDayCount > 0 ? "Google Maps grounding plus coordinate ordering" : "Google Maps grounded neighborhood sequencing",
+          coordinatePlaces: coordinateCount,
+          coordinateOptimizedDays: optimizedDayCount,
           timeSensitiveDetailsNeedRecheck: true
         }
       }
     }, request);
   } catch (error) {
     console.error("plan-trip failed", error instanceof Error ? error.message : error);
-    const status = error instanceof GeminiError ? error.status : 500;
+    const status = error instanceof GeminiError || error instanceof RequestError ? error.status : 500;
     return json({ error: error instanceof Error ? error.message : "Plan could not be created" }, request, status);
   }
 });

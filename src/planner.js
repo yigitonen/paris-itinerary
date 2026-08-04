@@ -5,7 +5,19 @@ const validTrip = (trip) => trip && Array.isArray(trip.days) && trip.days.length
 
 export async function generateTrip(input) {
   const { data, error } = await supabase.functions.invoke('plan-trip', { body: input });
-  if (error) throw new Error(error.message || 'Plan oluşturulamadı.');
+  if (error) {
+    let message = error.message || 'Plan oluşturulamadı.';
+    try {
+      const response = error.context;
+      if (response?.clone) {
+        const body = await response.clone().json();
+        if (body?.error) message = String(body.error);
+      }
+    } catch {
+      // Keep the transport error when the response body is unavailable.
+    }
+    throw new Error(message);
+  }
   if (!data?.trip || !validTrip(data.trip)) throw new Error(data?.error || 'Plan yanıtı doğrulanamadı.');
   const manual = createManualTrip(input);
   return {
