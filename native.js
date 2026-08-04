@@ -10,30 +10,21 @@ async function bootNative() {
   const [
     { App },
     { Browser },
-    { Camera, CameraResultType, CameraSource },
-    { Geolocation },
     { Haptics, ImpactStyle },
     { Keyboard },
-    { LocalNotifications },
     { Network },
-    { Share },
     { SplashScreen },
     { StatusBar, Style }
   ] = await Promise.all([
     import('@capacitor/app'),
     import('@capacitor/browser'),
-    import('@capacitor/camera'),
-    import('@capacitor/geolocation'),
     import('@capacitor/haptics'),
     import('@capacitor/keyboard'),
-    import('@capacitor/local-notifications'),
     import('@capacitor/network'),
-    import('@capacitor/share'),
     import('@capacitor/splash-screen'),
     import('@capacitor/status-bar')
   ]);
 
-  const notify = (message) => window.roamlyToast?.(message);
   await StatusBar.setStyle({ style: Style.Dark });
   if (Capacitor.getPlatform() === 'android') {
     await StatusBar.setBackgroundColor({ color: '#f6f7f2' });
@@ -59,80 +50,20 @@ async function bootNative() {
       return;
     }
 
-    if (target.dataset.action === 'add-photo') {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      try {
-        const photo = await Camera.getPhoto({
-          quality: 86,
-          allowEditing: false,
-          resultType: CameraResultType.Uri,
-          source: CameraSource.Prompt,
-          saveToGallery: false,
-          correctOrientation: true
-        });
-        localStorage.setItem('roamly-last-photo', JSON.stringify({ path: photo.webPath, at: Date.now() }));
-        notify('Fotoğraf seyahat anılarına eklendi');
-      } catch (error) {
-        if (!String(error).toLowerCase().includes('cancel')) notify('Fotoğraf eklenemedi');
-      }
-    }
-
-    if (target.dataset.action === 'invite') {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      await Share.share({
-        title: 'Roamly seyahat grubuma katıl',
-        text: 'Rotayı birlikte planlayalım ve anıları burada biriktirelim.',
-        url: 'https://yigitonen.github.io/paris-itinerary/?invite=roma',
-        dialogTitle: 'Arkadaşını davet et'
-      });
-    }
-
-    if (target.dataset.action === 'continue-route') {
-      try {
-        let permission = await Geolocation.checkPermissions();
-        if (permission.location !== 'granted') permission = await Geolocation.requestPermissions();
-        if (permission.location === 'granted') {
-          const location = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000 });
-          sessionStorage.setItem('roamly-location', JSON.stringify({ lat: location.coords.latitude, lng: location.coords.longitude, at: Date.now() }));
-        }
-      } catch (_) {
-        notify('Konum alınamadı; kayıtlı rota açılıyor');
-      }
-    }
-
-    if (target.dataset.action === 'notifications') {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      let permission = await LocalNotifications.checkPermissions();
-      if (permission.display !== 'granted') permission = await LocalNotifications.requestPermissions();
-      if (permission.display === 'granted') {
-        await LocalNotifications.schedule({ notifications: [{
-          id: 1208,
-          title: 'Roma yaklaşıyor ✈️',
-          body: 'Planında eksik kalan 3 rezervasyonu birlikte tamamlayalım.',
-          schedule: { at: new Date(Date.now() + 5000) },
-          extra: { route: 'trips/rome' }
-        }] });
-        notify('Seyahat bildirimleri açıldı');
-      }
-    }
   }, true);
 
   await Keyboard.addListener('keyboardWillShow', () => document.body.classList.add('keyboard-open'));
   await Keyboard.addListener('keyboardWillHide', () => document.body.classList.remove('keyboard-open'));
 
   await App.addListener('backButton', ({ canGoBack }) => {
-    const openModal = document.querySelector('.modal-shell.open');
-    const reels = document.querySelector('.reels-overlay.open');
-    if (openModal || reels) {
+    const openModal = document.querySelector('.modal.open');
+    if (openModal) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       return;
     }
-    const detail = document.querySelector('[data-view-panel="trip-detail"].active');
+    const detail = document.querySelector('[data-page="trip"].active');
     if (detail) {
-      window.roamlyShowView?.('trips');
+      document.querySelector('[data-route="trips"]')?.click();
       return;
     }
     if (canGoBack) history.back();
@@ -141,9 +72,8 @@ async function bootNative() {
 
   const handleDeepLink = ({ url }) => {
     if (!url) return;
-    window.roamlyShowView?.('trips');
-    const invite = new URL(url).searchParams.get('invite');
-    if (invite) notify('Seyahat daveti açıldı');
+    const route = new URL(url).searchParams.get('route');
+    document.querySelector(`[data-route="${route || 'home'}"]`)?.click();
   };
   await App.addListener('appUrlOpen', handleDeepLink);
   const launch = await App.getLaunchUrl();

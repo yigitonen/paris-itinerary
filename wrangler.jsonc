@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "roamly-travel",
+  "main": "./worker/index.js",
+  "compatibility_date": "2026-08-04",
+  "assets": {
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash"
+  }
+}
+

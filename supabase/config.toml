@@ -1,0 +1,5 @@
+project_id = "fskujzurzqjncvfrqxlr"
+
+[functions.plan-trip]
+verify_jwt = true
+

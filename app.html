@@ -671,7 +671,8 @@ function migrateParis() {
 /* ------------------------------------------------------------------ */
 const STORE_KEY = "tripline-v1";
 let store = load();
-let curTripId = null;   // null → home screen
+const requestedTripId = new URLSearchParams(location.search).get("trip") || localStorage.getItem("roamly-active-trip-v1");
+let curTripId = store.trips.some(t => t.id === requestedTripId) ? requestedTripId : null;
 let activeDay = 0;
 let editing = false;
 let mapVisible = false;
@@ -693,6 +694,7 @@ function save() {
   let ok = true;
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
   catch (e) { console.warn("Could not save:", e); ok = false; }
+  queueCloudSave();
   return ok;
 }
 
@@ -2517,6 +2519,43 @@ function importData(file) {
 const SUPABASE_URL = "https://fskujzurzqjncvfrqxlr.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZza3VqenVyenFqbmN2ZnJxeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTk0NjYsImV4cCI6MjA5OTA5NTQ2Nn0.TNFYgZcygfmd4FvNlrzNwFmoUqNVuX8M3zLfUidPcAA";
 let sb = null, sbUser = null;
+let cloudSaveTimer = null;
+
+function queueCloudSave() {
+  if (!sb || !sbUser || !curTripId) return;
+  const trip = curTrip();
+  if (!trip) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(async () => {
+    try {
+      const { data, error: readError } = await sb.from("trips").select("plan").eq("id", trip.id).single();
+      if (readError) throw readError;
+      const days = trip.days.map(day => ({
+        id: day.id,
+        date: day.date,
+        title: day.title,
+        theme: day.theme || "",
+        stops: day.stops.map(stop => ({
+          id: stop.id,
+          time: stop.time,
+          title: stop.title,
+          category: stop.cat || stop.category || "Durak",
+          duration: stop.duration || "",
+          notes: stop.note || stop.notes || "",
+          address: stop.address || "",
+          lat: stop.lat ?? null,
+          lng: stop.lng ?? null
+        }))
+      }));
+      const { error } = await sb.from("trips").update({
+        plan: { ...(data.plan || {}), days }
+      }).eq("id", trip.id);
+      if (error) throw error;
+    } catch (error) {
+      console.warn("Cloud sync failed", error);
+    }
+  }, 700);
+}
 
 function initAuth() {
   if (typeof supabase === "undefined") { renderAccount(); return; }

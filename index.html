@@ -3,175 +3,178 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f6f7f2">
-  <meta name="description" content="Roamly — seyahatini planla, birlikte yaşa ve hatırla.">
+  <meta name="theme-color" content="#f4f1e9">
+  <meta name="description" content="Roamly seyahatini planlar, rotanı sadeleştirir ve anılarını bir arada tutar.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Roamly">
+  <meta property="og:title" content="Roamly — Yolculuğun tek yerde">
+  <meta property="og:description" content="Günlerini kendi ritminde planla; rotanı, bütçeni ve anılarını bir arada tut.">
+  <meta property="og:image" content="https://roamly-travel.yigitonen.chatgpt.site/roamly-social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Roamly — Yolculuğun tek yerde">
+  <meta name="twitter:description" content="Günlerini kendi ritminde planla; rotanı, bütçeni ve anılarını bir arada tut.">
+  <meta name="twitter:image" content="https://roamly-travel.yigitonen.chatgpt.site/roamly-social-card.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='28' fill='%231d2c23'/><path d='M27 67c18-8 22-25 46-34M43 31h30v30' fill='none' stroke='%23d9ff73' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>">
-  <link rel="stylesheet" href="styles.css">
-  <title>Roamly — Git, yaşa, hatırla</title>
+  <link rel="icon" href="icons/icon-192.webp">
+  <title>Roamly — Yolculuğun tek yerde</title>
 </head>
 <body>
-  <div class="offline-bar" id="offlineBar" role="status">Çevrimdışısın · Kayıtların bu cihazda güvende</div>
+  <div class="offline-notice" id="offlineNotice" role="status">Çevrimdışısın · Kaydedilmiş planların açık kalır</div>
 
-  <div class="app-shell">
+  <div class="app-shell" id="appShell">
     <aside class="sidebar" aria-label="Ana menü">
-      <a class="brand" href="#kesfet" aria-label="Roamly ana sayfa">
-        <span class="brand-mark"><i data-lucide="route"></i></span>
-        <span>roamly</span>
-      </a>
-      <nav class="desktop-nav">
-        <button class="nav-item active" data-view="discover"><i data-lucide="compass"></i><span>Keşfet</span></button>
-        <button class="nav-item" data-view="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
-        <button class="nav-item nav-create" data-action="open-planner"><i data-lucide="sparkles"></i><span>AI ile planla</span></button>
-        <button class="nav-item" data-view="memories"><i data-lucide="images"></i><span>Anılar</span></button>
-        <button class="nav-item" data-view="profile"><i data-lucide="user-round"></i><span>Profil</span></button>
-      </nav>
-      <div class="sidebar-trip">
-        <span class="eyebrow">Sıradaki seyahat</span>
-        <strong>Roma · 14 gün</strong>
-        <div class="tiny-progress"><span style="width:72%"></span></div>
-        <small>Planın %72 hazır</small>
-      </div>
-      <button class="user-mini" data-view="profile">
-        <img src="assets/media/elif.jpg" alt="Elif">
-        <span><strong>Elif Yılmaz</strong><small>@elifgeziyor</small></span>
-        <i data-lucide="chevron-right"></i>
+      <button class="brand" data-route="home" aria-label="Roamly ana sayfa">
+        <span class="brand-symbol" aria-hidden="true"><i data-lucide="route"></i></span>
+        <span>Roamly</span>
       </button>
+
+      <nav class="side-nav" aria-label="Sayfalar">
+        <button class="nav-item active" data-route="home"><i data-lucide="house"></i><span>Bugün</span></button>
+        <button class="nav-item" data-route="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
+        <button class="nav-item" data-route="memories"><i data-lucide="notebook-pen"></i><span>Anılar</span></button>
+        <button class="nav-item" data-route="settings"><i data-lucide="settings-2"></i><span>Ayarlar</span></button>
+      </nav>
+
+      <button class="new-trip-side" data-open="planner"><i data-lucide="sparkles"></i><span>Yeni plan</span></button>
+      <div class="sidebar-foot" id="sidebarFoot"></div>
     </aside>
 
     <main class="main" id="mainContent">
       <header class="topbar">
-        <a class="brand mobile-brand" href="#kesfet"><span class="brand-mark"><i data-lucide="route"></i></span><span>roamly</span></a>
-        <div class="top-actions">
-          <button class="icon-button" data-action="search" aria-label="Ara"><i data-lucide="search"></i></button>
-          <button class="icon-button notification-button" data-action="notifications" aria-label="Bildirimler"><i data-lucide="bell"></i><span></span></button>
-          <button class="avatar-button" data-view="profile" aria-label="Profil"><img src="assets/media/elif.jpg" alt=""></button>
-        </div>
+        <button class="brand mobile-brand" data-route="home" aria-label="Roamly ana sayfa">
+          <span class="brand-symbol" aria-hidden="true"><i data-lucide="route"></i></span><span>Roamly</span>
+        </button>
+        <div class="sync-state" id="syncState" role="status"><span></span><em>Hazır</em></div>
+        <button class="account-button" id="accountButton" data-open="auth"><span class="account-avatar">YÖ</span><span class="account-copy"><strong>Misafir modunda</strong><small>Bulut senkronu kapalı</small></span><i data-lucide="chevron-down"></i></button>
       </header>
 
-      <section class="view active" id="view-discover" data-view-panel="discover">
-        <div class="page-head">
-          <div><span class="eyebrow">PAZARTESİ, 27 TEMMUZ</span><h1>Yeni bir yer görelim mi?</h1></div>
-          <button class="add-friend-button" data-action="friends"><i data-lucide="user-plus"></i><span>Arkadaş ekle</span></button>
+      <section class="page active" id="page-home" data-page="home">
+        <div class="home-head">
+          <div><span class="eyebrow" id="todayLabel"></span><h1 id="greeting">Yeni bir yer görelim mi?</h1><p>Planını oluştur, gününü aç ve gerisini yolda şekillendir.</p></div>
+          <button class="secondary-button desktop-only" data-open="planner"><i data-lucide="plus"></i> Yeni seyahat</button>
         </div>
 
-        <article class="hero-card">
-          <div class="hero-media" aria-hidden="true"></div>
-          <div class="hero-shade"></div>
-          <div class="hero-copy">
-            <span class="live-pill"><span></span> YAKLAŞAN SEYAHAT</span>
-            <h2>Roma seni bekliyor.</h2>
-            <p>4 gün · 2 kişi · 18 kaydedilen yer</p>
-            <div class="hero-actions">
-              <button class="primary light" data-action="open-trip"><span>Planı aç</span><i data-lucide="arrow-up-right"></i></button>
-              <button class="glass-button" data-action="group"><i data-lucide="users"></i><span>Elif + Yiğit</span></button>
-            </div>
-          </div>
-          <div class="hero-date"><strong>12</strong><span>AĞU</span></div>
-        </article>
-
-        <section class="quick-grid" aria-label="Hızlı işlemler">
-          <button class="quick-card ai" data-action="open-planner"><span class="quick-icon"><i data-lucide="sparkles"></i></span><span><strong>AI ile seyahat planla</strong><small>Şehir ve tarih yeterli</small></span><i data-lucide="arrow-right"></i></button>
-          <button class="quick-card" data-action="continue-route"><span class="quick-icon mint"><i data-lucide="navigation"></i></span><span><strong>Rotaya devam et</strong><small>Bugün · 3 durak kaldı</small></span><i data-lucide="arrow-right"></i></button>
+        <section class="plan-composer" aria-labelledby="composerTitle">
+          <div class="composer-copy"><span class="pill"><i data-lucide="sparkles"></i> ROAMLY AI</span><h2 id="composerTitle">Bir sonraki hikâyen nerede başlıyor?</h2><p>Şehir ve tarihle başla. Tempo, mahalleler ve gün içi akış sana göre dengelensin.</p></div>
+          <form class="quick-plan-form" id="quickPlanForm">
+            <label><span>Şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="destination" placeholder="Paris, Tokyo, Kaş…" required autocomplete="off"></span></label>
+            <label><span>Başlangıç</span><span class="field"><i data-lucide="calendar-days"></i><input name="startDate" type="date" required></span></label>
+            <label><span>Süre</span><span class="field"><i data-lucide="clock-3"></i><select name="days"><option value="2">2 gün</option><option value="3">3 gün</option><option value="4" selected>4 gün</option><option value="5">5 gün</option><option value="7">7 gün</option></select></span></label>
+            <button class="primary-button coral" type="submit">Planımı oluştur <i data-lucide="arrow-up-right"></i></button>
+          </form>
+          <div class="composer-art" aria-hidden="true"></div>
         </section>
 
-        <section class="section-block">
-          <div class="section-title-row"><div><span class="eyebrow">ARKADAŞLARINDAN</span><h2>Şimdi nerelerde?</h2></div><button class="text-button" data-action="friends">Tümünü gör</button></div>
-          <div class="stories" id="stories"></div>
-        </section>
-
-        <section class="section-block feed-section">
-          <div class="section-title-row"><div><span class="eyebrow">SEYAHAT AKIŞI</span><h2>İlham veren rotalar</h2></div><button class="filter-button"><i data-lucide="sliders-horizontal"></i></button></div>
-          <div id="feed"></div>
-        </section>
-      </section>
-
-      <section class="view" id="view-trips" data-view-panel="trips">
-        <div class="page-head"><div><span class="eyebrow">SENİN DÜNYAN</span><h1>Seyahatlerin</h1><p class="page-sub">Planlananlardan unutamadıklarına, hepsi burada.</p></div><button class="primary" data-action="open-planner"><i data-lucide="plus"></i> Yeni seyahat</button></div>
-        <div class="trip-tabs"><button class="active" data-trip-filter="all">Tümü</button><button data-trip-filter="upcoming">Yaklaşan</button><button data-trip-filter="past">Geçmiş</button></div>
-        <div class="trip-list" id="tripList"></div>
-        <a class="legacy-link" href="app.html"><span><i data-lucide="route"></i></span><div><strong>Gelişmiş rota araçları</strong><small>Harita optimizasyonu, durak düzenleme, Google/Apple Maps ve yedekleme</small></div><i data-lucide="arrow-up-right"></i></a>
-      </section>
-
-      <section class="view" id="view-memories" data-view-panel="memories">
-        <div class="page-head"><div><span class="eyebrow">ZAMAN MAKİNESİ</span><h1>Anılar</h1><p class="page-sub">Gittiğin yerler kadar hissettiklerin de kalsın.</p></div><button class="primary soft" data-action="new-journal"><i data-lucide="pen-line"></i> Journal yaz</button></div>
-        <article class="memory-highlight">
-          <div><span class="live-pill dark">1 YIL ÖNCE BUGÜN</span><h2>Lizbon'da altın saat</h2><p>O yokuşu çıktığımıza değmişti.</p><button class="primary light" data-action="reels"><i data-lucide="play"></i> Anıyı yeniden yaşa</button></div>
-        </article>
-        <div class="memory-stats">
-          <div><strong>12</strong><span>Şehir</span></div><div><strong>2.840</strong><span>Fotoğraf</span></div><div><strong>186 km</strong><span>Yürüdün</span></div><div><strong>94</strong><span>Favori</span></div>
+        <div class="home-grid">
+          <section class="active-trip-card" id="activeTripCard" aria-live="polite"></section>
+          <aside class="today-card" id="todayCard"></aside>
         </div>
-        <div class="section-title-row"><div><span class="eyebrow">KOLEKSİYON</span><h2>Şehir şehir</h2></div><button class="filter-button"><i data-lucide="layout-grid"></i></button></div>
-        <div class="photo-grid" id="photoGrid"></div>
+
+        <section class="home-lower" id="homeLower"></section>
       </section>
 
-      <section class="view" id="view-profile" data-view-panel="profile">
-        <div class="profile-cover"></div>
-        <div class="profile-card">
-          <img class="profile-avatar" src="assets/media/elif.jpg" alt="Elif Yılmaz">
-          <button class="secondary profile-edit"><i data-lucide="settings-2"></i> Profili düzenle</button>
-          <h1>Elif Yılmaz</h1><p>@elifgeziyor · İstanbul</p>
-          <div class="profile-counts"><button><strong>24</strong><span>Seyahat</span></button><button data-action="friends"><strong>386</strong><span>Arkadaş</span></button><button><strong>18.4K</strong><span>km</span></button></div>
-          <p class="profile-bio">Yeni sokaklar, iyi kahve ve gün batımının peşinde. 🌞</p>
-        </div>
-        <div class="passport-card"><div><span class="eyebrow">ROAMLY PASAPORTU</span><h2>Seviye 8 · Kaşif</h2><p>Bir sonraki seviyeye 2 yeni şehir kaldı.</p><div class="passport-progress"><span></span></div></div><span class="passport-stamp"><i data-lucide="plane"></i></span></div>
-        <div class="profile-menu">
-          <button data-action="friends"><span><i data-lucide="users"></i></span><div><strong>Arkadaşlarım</strong><small>386 kişi · 8 istek</small></div><i data-lucide="chevron-right"></i></button>
-          <button data-action="offline-info"><span><i data-lucide="cloud-off"></i></span><div><strong>Çevrimdışı seyahatler</strong><small>Roma cihazına indirildi</small></div><i data-lucide="chevron-right"></i></button>
-          <button data-action="budget"><span><i data-lucide="wallet-cards"></i></span><div><strong>Bütçe ve para birimleri</strong><small>EUR · TRY</small></div><i data-lucide="chevron-right"></i></button>
-          <button data-action="privacy"><span><i data-lucide="shield-check"></i></span><div><strong>Gizlilik</strong><small>Konumunu kimlerin göreceğini seç</small></div><i data-lucide="chevron-right"></i></button>
+      <section class="page" id="page-trips" data-page="trips">
+        <div class="page-head"><div><span class="eyebrow">SEYAHAT KÜTÜPHANEN</span><h1>Seyahatlerin</h1><p>Planlananlardan tamamlananlara, her yolculuk tek yerde.</p></div><button class="primary-button" data-open="planner"><i data-lucide="plus"></i> Yeni seyahat</button></div>
+        <div class="segmented" id="tripFilters" role="group" aria-label="Seyahat filtresi"><button class="active" data-filter="all">Tümü</button><button data-filter="upcoming">Yaklaşan</button><button data-filter="planning">Hazırlanıyor</button><button data-filter="past">Geçmiş</button></div>
+        <div class="trip-grid" id="tripGrid"></div>
+      </section>
+
+      <section class="page" id="page-memories" data-page="memories">
+        <div class="page-head"><div><span class="eyebrow">YOLCULUK GÜNLÜĞÜ</span><h1>Anılar</h1><p>Fotoğraf sayısından önce, günün sende bıraktığını sakla.</p></div><button class="primary-button" data-open="journal"><i data-lucide="pen-line"></i> Yeni not</button></div>
+        <div class="memory-hero" id="memoryHero"></div>
+        <div class="journal-grid" id="journalGrid"></div>
+      </section>
+
+      <section class="page" id="page-settings" data-page="settings">
+        <div class="page-head"><div><span class="eyebrow">ROAMLY SENİN</span><h1>Ayarlar</h1><p>Hesabını, verilerini ve yolculuk tercihlerini yönet.</p></div></div>
+        <div class="settings-layout">
+          <section class="settings-card account-settings" id="accountSettings"></section>
+          <section class="settings-card"><span class="settings-icon"><i data-lucide="download"></i></span><div><h2>Verilerin</h2><p>Seyahatlerini tek dosyada indir veya daha önce aldığın yedeği geri yükle.</p><div class="button-row"><button class="secondary-button" data-action="export-data">Yedeği indir</button><label class="secondary-button file-button">Yedeği içe aktar<input id="importInput" type="file" accept="application/json"></label></div></div></section>
+          <section class="settings-card"><span class="settings-icon peach"><i data-lucide="hand-heart"></i></span><div><span class="eyebrow coral-text">ERKEN ERİŞİM</span><h2>Roamly Locals</h2><p>Yerellerle deneyim pazarı henüz açık değil. İlk güvenli pilotu kurarken bekleme listesine katıl.</p><button class="secondary-button" data-open="locals">Listeye katıl</button></div></section>
+          <section class="settings-card"><span class="settings-icon"><i data-lucide="shield-check"></i></span><div><h2>Gizlilik ve destek</h2><p>Roamly reklam takibi yapmaz. Konum ve fotoğraflar yalnızca sen başlattığında kullanılır.</p><div class="link-row"><a href="privacy.html">Gizlilik politikası <i data-lucide="arrow-up-right"></i></a><a href="support.html">Destek <i data-lucide="arrow-up-right"></i></a></div></div></section>
         </div>
       </section>
 
-      <section class="view trip-detail-view" id="view-trip-detail" data-view-panel="trip-detail">
-        <div id="tripDetail"></div>
-      </section>
+      <section class="page trip-page" id="page-trip" data-page="trip"><div id="tripDetail"></div></section>
     </main>
 
     <nav class="bottom-nav" aria-label="Mobil menü">
-      <button class="active" data-view="discover"><i data-lucide="compass"></i><span>Keşfet</span></button>
-      <button data-view="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
-      <button class="plan-fab" data-action="open-planner" aria-label="AI ile seyahat planla"><span><i data-lucide="sparkles"></i></span></button>
-      <button data-view="memories"><i data-lucide="images"></i><span>Anılar</span></button>
-      <button data-view="profile"><i data-lucide="user-round"></i><span>Profil</span></button>
+      <button class="active" data-route="home"><i data-lucide="house"></i><span>Bugün</span></button>
+      <button data-route="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
+      <button class="plan-fab" data-open="planner" aria-label="Yeni plan"><span><i data-lucide="sparkles"></i></span></button>
+      <button data-route="memories"><i data-lucide="notebook-pen"></i><span>Anılar</span></button>
+      <button data-route="settings"><i data-lucide="settings-2"></i><span>Ayarlar</span></button>
     </nav>
   </div>
 
-  <div class="modal-shell" id="plannerModal" aria-hidden="true">
-    <div class="modal-backdrop" data-action="close-modal"></div>
+  <div class="modal" id="plannerModal" aria-hidden="true">
+    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
     <section class="modal-panel planner-panel" role="dialog" aria-modal="true" aria-labelledby="plannerTitle">
-      <div class="modal-top"><div><span class="eyebrow">ROAMLY AI</span><h2 id="plannerTitle">Nereye gidiyoruz?</h2></div><button class="icon-button" data-action="close-modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
-      <form id="plannerForm">
-        <label class="form-field"><span>Şehir</span><div class="input-shell"><i data-lucide="map-pin"></i><input id="planCity" name="city" required placeholder="Örn. Roma, Tokyo, Kapadokya" autocomplete="off"></div></label>
+      <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY AI</span><h2 id="plannerTitle">Seyahatini tarif et.</h2><p>İyi bir plan yeterince dolu değil; doğru ritimde olandır.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <form id="plannerForm" class="planner-form">
+        <label class="form-field full"><span>Şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="destination" required placeholder="Nereye gidiyorsun?" autocomplete="off"></span></label>
         <div class="form-grid">
-          <label class="form-field"><span>Başlangıç tarihi</span><div class="input-shell"><i data-lucide="calendar-days"></i><input id="planDate" name="date" type="date" required></div></label>
-          <label class="form-field"><span>Kaç gün?</span><div class="input-shell"><i data-lucide="moon-star"></i><select id="planDays" name="days"><option value="2">2 gün</option><option value="3">3 gün</option><option value="4" selected>4 gün</option><option value="5">5 gün</option><option value="7">7 gün</option></select></div></label>
+          <label class="form-field"><span>Başlangıç</span><span class="field"><i data-lucide="calendar-days"></i><input name="startDate" type="date" required></span></label>
+          <label class="form-field"><span>Kaç gün?</span><span class="field"><i data-lucide="clock-3"></i><select name="days"><option value="2">2 gün</option><option value="3">3 gün</option><option value="4" selected>4 gün</option><option value="5">5 gün</option><option value="7">7 gün</option><option value="10">10 gün</option></select></span></label>
         </div>
-        <fieldset><legend>Nasıl bir seyahat olsun?</legend><div class="choice-chips" id="vibeChoices"><button type="button" class="selected" data-vibe="Dengeli">Dengeli</button><button type="button" data-vibe="Yeme içme">Yeme içme</button><button type="button" data-vibe="Sanat & kültür">Sanat & kültür</button><button type="button" data-vibe="Macera">Macera</button><button type="button" data-vibe="Yavaş seyahat">Yavaş seyahat</button></div></fieldset>
-        <fieldset><legend>Kiminle?</legend><div class="choice-chips compact" id="groupChoices"><button type="button" data-group="Tek başıma">Tek başıma</button><button type="button" class="selected" data-group="Partnerimle">Partnerimle</button><button type="button" data-group="Arkadaşlarla">Arkadaşlarla</button><button type="button" data-group="Aileyle">Aileyle</button></div></fieldset>
-        <label class="form-field"><span>Özel bir not <em>isteğe bağlı</em></span><textarea id="planNote" placeholder="Bol kahve, az müze; lokal restoranlar ve gün batımı olsun…"></textarea></label>
-        <button class="primary planner-submit" type="submit"><i data-lucide="sparkles"></i><span>Planımı oluştur</span><kbd>↵</kbd></button>
-        <p class="privacy-note"><i data-lucide="shield-check"></i> Plan; ilgi alanların, tempo tercihin ve mesafelere göre hazırlanır.</p>
+        <fieldset><legend>Nasıl hissettirsin?</legend><div class="choice-row"><label><input type="radio" name="style" value="Dengeli" checked><span>Dengeli</span></label><label><input type="radio" name="style" value="Yeme içme"><span>Yeme içme</span></label><label><input type="radio" name="style" value="Sanat ve kültür"><span>Sanat & kültür</span></label><label><input type="radio" name="style" value="Doğa"><span>Doğa</span></label></div></fieldset>
+        <fieldset><legend>Tempon</legend><div class="choice-row"><label><input type="radio" name="pace" value="Rahat" checked><span>Rahat</span></label><label><input type="radio" name="pace" value="Dengeli"><span>Dengeli</span></label><label><input type="radio" name="pace" value="Yoğun"><span>Yoğun</span></label></div></fieldset>
+        <label class="form-field full"><span>Özel bir not <em>isteğe bağlı</em></span><textarea name="note" rows="3" placeholder="Az müze, iyi kahve, çocukla rahat yürüyüş…"></textarea></label>
+        <div class="form-actions"><button class="secondary-button" type="button" data-action="manual-trip">Boş planla başla</button><button class="primary-button coral" type="submit"><i data-lucide="sparkles"></i> AI planını oluştur</button></div>
+        <p class="form-note"><i data-lucide="shield-check"></i> AI planlama hesap gerektirir; anahtar hiçbir zaman cihazına indirilmez.</p>
       </form>
     </section>
   </div>
 
-  <div class="modal-shell" id="sheetModal" aria-hidden="true">
-    <div class="modal-backdrop" data-action="close-modal"></div>
-    <section class="modal-panel sheet-panel" role="dialog" aria-modal="true"><div id="sheetContent"></div></section>
+  <div class="modal" id="stopModal" aria-hidden="true">
+    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+    <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="stopTitle">
+      <div class="modal-head"><div><span class="eyebrow">ROTAYA EKLE</span><h2 id="stopTitle">Yeni durak</h2></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <form id="stopForm" class="planner-form">
+        <input type="hidden" name="dayId"><input type="hidden" name="stopId">
+        <label class="form-field full"><span>Yer</span><span class="field"><i data-lucide="map-pin"></i><input name="title" required placeholder="Müze, restoran, mahalle…"></span></label>
+        <div class="form-grid"><label class="form-field"><span>Saat</span><span class="field"><i data-lucide="clock-3"></i><input name="time" type="time" value="10:00" required></span></label><label class="form-field"><span>Kategori</span><span class="field"><i data-lucide="tag"></i><select name="category"><option>Kahve</option><option>Tarih</option><option>Sanat</option><option>Mahalle</option><option>Yemek</option><option>Doğa</option><option>Manzara</option><option>Diğer</option></select></span></label></div>
+        <label class="form-field full"><span>Adres</span><span class="field"><i data-lucide="navigation"></i><input name="address" placeholder="Yol tarifi için adres"></span></label>
+        <label class="form-field full"><span>Not</span><textarea name="notes" rows="3" placeholder="Rezervasyon, süre veya küçük bir hatırlatma…"></textarea></label>
+        <div class="form-actions"><button class="danger-button hidden" type="button" data-action="delete-stop">Durağı sil</button><button class="primary-button" type="submit">Kaydet</button></div>
+      </form>
+    </section>
   </div>
 
-  <div class="reels-overlay" id="reelsOverlay" aria-hidden="true">
-    <button class="reels-close" data-action="close-reels" aria-label="Kapat"><i data-lucide="x"></i></button>
-    <div class="reel-bg"></div><div class="reel-shade"></div>
-    <div class="reel-top"><span>ANILAR · LİZBON</span><div class="reel-progress"><span></span><span></span><span></span></div></div>
-    <div class="reel-copy"><span class="reel-date">18 MAYIS 2025</span><h2>Güneş batarken<br>şehir altına dönüştü.</h2><p><i data-lucide="map-pin"></i> Miradouro da Senhora do Monte</p></div>
-    <div class="reel-side"><button><i data-lucide="heart"></i><span>128</span></button><button><i data-lucide="message-circle"></i><span>12</span></button><button><i data-lucide="send"></i></button></div>
+  <div class="modal" id="journalModal" aria-hidden="true">
+    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+    <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="journalTitle">
+      <div class="modal-head"><div><span class="eyebrow">YOLCULUK GÜNLÜĞÜ</span><h2 id="journalTitle">Bugünden ne kalsın?</h2></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <form id="journalForm" class="planner-form"><label class="form-field full"><span>Seyahat</span><span class="field"><i data-lucide="map"></i><select name="tripId" id="journalTripSelect" required></select></span></label><label class="form-field full"><span>Başlık</span><span class="field"><i data-lucide="type"></i><input name="title" required placeholder="Bugünün kısa adı"></span></label><label class="form-field full"><span>Notun</span><textarea name="body" rows="7" required placeholder="Bir ses, bir masa, yanlış saptığın güzel bir sokak…"></textarea></label><button class="primary-button full-button" type="submit">Anılarıma kaydet</button></form>
+    </section>
   </div>
 
-  <div class="toast" id="toast" role="status"><i data-lucide="check-circle-2"></i><span></span></div>
+  <div class="modal" id="authModal" aria-hidden="true">
+    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+    <section class="modal-panel auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <button class="icon-button modal-close" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button>
+      <span class="brand-symbol large" aria-hidden="true"><i data-lucide="route"></i></span><span class="eyebrow coral-text">BULUTTA GÜVENDE</span><h2 id="authTitle">Planların seninle gelsin.</h2><p>Farklı cihazlarda devam et ve AgentRouter ile gerçek AI planlama kullan.</p>
+      <button class="primary-button google-button" data-action="sign-in-google"><i data-lucide="chrome"></i> Google ile devam et</button>
+      <div class="divider"><span>veya</span></div>
+      <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" type="submit">Giriş bağlantısı gönder</button></form>
+      <p class="form-note">Şifre yok. E-postana güvenli bir giriş bağlantısı göndeririz.</p>
+    </section>
+  </div>
+
+  <div class="modal" id="localsModal" aria-hidden="true">
+    <button class="modal-backdrop" data-close="modal" aria-label="Kapat"></button>
+    <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="localsTitle">
+      <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY LOCALS · ERKEN ERİŞİM</span><h2 id="localsTitle">Şehri yaşayan biriyle tanı.</h2><p>Pazar yerini açmadan önce kimlik, güvenlik ve destek akışlarını doğru kuruyoruz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <form id="localsForm" class="planner-form"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com"></span></label><label class="form-field full"><span>İlgilendiğin şehir</span><span class="field"><i data-lucide="map-pin"></i><input name="city" required placeholder="İstanbul, Roma, Lizbon…"></span></label><label class="form-field full"><span>Ne arıyorsun?</span><textarea name="note" rows="3" placeholder="Gezginim / yerel olmak istiyorum / ikisi de"></textarea></label><button class="primary-button full-button" type="submit">Bekleme listesine katıl</button></form>
+    </section>
+  </div>
+
+  <div class="loading-overlay" id="loadingOverlay" aria-hidden="true"><div><span class="brand-symbol large"><i data-lucide="sparkles"></i></span><h2>Planın şekilleniyor.</h2><p>Mahalleler, yürüyüşler ve günün ritmi dengeleniyor…</p><span class="loading-bar"><i></i></span></div></div>
+  <div class="toast" id="toast" role="status"><i data-lucide="circle-check"></i><span></span></div>
 
   <script vite-ignore src="assets/vendor/lucide.min.js"></script>
   <script type="module" src="main.js"></script>

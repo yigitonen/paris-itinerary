@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
-import { cpSync, copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+
+const sitesBuild = process.env.ROAMLY_SITES_BUILD === '1';
 
 export default defineConfig({
   base: './',
   build: {
+    outDir: sitesBuild ? 'dist/client' : 'dist',
     target: 'es2022',
     rollupOptions: {
       input: {
@@ -17,16 +20,28 @@ export default defineConfig({
   },
   plugins: [{
     name: 'roamly-static-assets',
+    buildStart() {
+      if (sitesBuild) rmSync('dist', { recursive: true, force: true });
+    },
     closeBundle() {
-      mkdirSync('dist/assets', { recursive: true });
-      mkdirSync('dist/icons', { recursive: true });
-      copyFileSync('manifest.webmanifest', 'dist/manifest.webmanifest');
-      copyFileSync('sw.js', 'dist/sw.js');
-      cpSync('assets', 'dist/assets', { recursive: true });
-      cpSync('icons', 'dist/icons', { recursive: true });
-      const emittedManifest = readdirSync('dist/assets').find((file) => /^manifest-.*\.webmanifest$/.test(file));
+      const clientDir = sitesBuild ? 'dist/client' : 'dist';
+      mkdirSync(`${clientDir}/assets`, { recursive: true });
+      mkdirSync(`${clientDir}/icons`, { recursive: true });
+      copyFileSync('manifest.webmanifest', `${clientDir}/manifest.webmanifest`);
+      copyFileSync('sw.js', `${clientDir}/sw.js`);
+      cpSync('assets', `${clientDir}/assets`, { recursive: true });
+      cpSync('icons', `${clientDir}/icons`, { recursive: true });
+
+      if (sitesBuild) {
+        mkdirSync('dist/.openai', { recursive: true });
+        mkdirSync('dist/server', { recursive: true });
+        copyFileSync('.openai/hosting.json', 'dist/.openai/hosting.json');
+        copyFileSync('worker/index.js', 'dist/server/index.js');
+      }
+
+      const emittedManifest = readdirSync(`${clientDir}/assets`).find((file) => /^manifest-.*\.webmanifest$/.test(file));
       if (emittedManifest) {
-        const path = `dist/assets/${emittedManifest}`;
+        const path = `${clientDir}/assets/${emittedManifest}`;
         const manifest = JSON.parse(readFileSync(path, 'utf8'));
         manifest.start_url = '../index.html';
         manifest.icons = manifest.icons.map((icon) => ({ ...icon, src: `../${icon.src}` }));
