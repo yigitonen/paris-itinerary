@@ -10,7 +10,7 @@ day, tracking expenses, and keeping a private journal. The main experience is
 - Guest mode works immediately and stores trips on the device.
 - Signing in enables private cloud sync through Supabase.
 - AI planning runs only through the protected `plan-trip` Supabase Edge
-  Function. The AgentRouter key never enters the browser or native bundle.
+  Function. The Gemini key never enters the browser or native bundle.
 - When AI is unavailable, Roamly says so and offers a blank editable plan. It
   never presents a canned itinerary as model output.
 - Roamly Locals is an honest early-access waitlist until identity, safety,
@@ -27,28 +27,29 @@ npm run build
 `npm run build:sites` creates the Sites deployment shape under `dist/client`
 and `dist/server`. The normal build remains under `dist` for Capacitor.
 
-## Supabase and AgentRouter
+## Supabase and Gemini
 
 The live schema is defined in
 `supabase/migrations/202608040001_core_travel.sql`. It contains private
 owner-scoped trips and the Locals waitlist, both protected by row-level
 security.
 
-AI planning uses the current capability API at `agentrouter.to`. Add an
-Agentic API key issued by that service (current keys use the `aak_` format) as
-the `AGENTIC_API_KEY` Supabase Edge Function secret. Tokens from
-`agentrouter.org` are coding-tool proxy tokens and are not compatible with the
-travel planner.
+AI planning uses Gemini 2.5 Flash. Add a Google AI Studio key as the
+`GEMINI_API_KEY` Supabase Edge Function secret. The free tier can be used
+without placing a provider key in the client, subject to Google's current
+quotas and data-use terms. Use a key whose Google AI Studio project is on the
+Free Tier; a paid Prepay project stops serving requests when its credit balance
+reaches zero and does not automatically fall back to free usage.
 
-The planner first researches official/credible destination guidance, then asks
-the model for a neighborhood-coherent draft, verifies every venue through a
-places search, and finally optimizes coordinates without moving a morning,
-afternoon, or evening stop into the wrong part of the day. Traveler guidance is
-stored as a paraphrased recurring pattern, never as a fabricated quote.
+The planner first researches official and credible destination guidance with
+Google Search grounding. It then uses Google Maps grounding to select real
+venues and organize each day into adjacent neighborhoods, before producing a
+strict Turkish itinerary. Every grounded stop links to its Google Maps source.
+Traveler guidance is stored as a paraphrased recurring pattern, never as a
+fabricated quote.
 
-Optional secrets are `AGENTIC_API_BASE_URL`,
-`AGENTROUTER_MODEL_ROUTE_KEY`, `AGENTROUTER_MODEL`,
-`AGENTROUTER_SEARCH_ROUTE_KEY`, and `AGENTROUTER_PLACES_ROUTE_KEY`. Deploy with:
+The optional `GEMINI_MODEL` secret can override the default
+`gemini-2.5-flash`. Deploy with:
 
 ```sh
 supabase functions deploy plan-trip

@@ -1,12 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.112.0";
-import { AgentRouterClient, DEFAULT_AGENTIC_API_BASE_URL } from "npm:@agentrouter/agentrouter@0.1.12";
+import { interactionSources, interactionText, matchPlaceSource, mergeSources } from "./gemini.js";
 import { optimizeDayStops } from "./route.js";
 
-const DEFAULT_MODEL_ROUTE = "models.chat.complete.deepseek.mpp";
-const DEFAULT_MODEL = "deepseek-v4-pro";
-const DEFAULT_SEARCH_ROUTE = "search.answer.brave.mpp";
-const DEFAULT_PLACES_ROUTE = "geo.places.search.googlemaps.mpp";
+const DEFAULT_MODEL = "gemini-2.5-flash";
+const API_ROOT = "https://generativelanguage.googleapis.com/v1beta";
 
 const allowedOrigins = new Set([
   "https://roamly-travel.yigitonen.chatgpt.site",
@@ -16,11 +14,11 @@ const allowedOrigins = new Set([
   "capacitor://localhost"
 ]);
 
-const configuredOrigins = (Deno.env.get("ALLOWED_ORIGINS") || "")
+(Deno.env.get("ALLOWED_ORIGINS") || "")
   .split(",")
   .map((value) => value.trim())
-  .filter(Boolean);
-configuredOrigins.forEach((origin) => allowedOrigins.add(origin));
+  .filter(Boolean)
+  .forEach((origin) => allowedOrigins.add(origin));
 
 function corsHeaders(request: Request) {
   const origin = request.headers.get("origin") || "";
@@ -68,121 +66,12 @@ function validateInput(value: unknown) {
   return { destination, startDate, days, style, pace, note };
 }
 
-function validUrl(value: unknown) {
-  try {
-    const url = new URL(String(value));
-    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
-  } catch {
-    return "";
-  }
-}
-
-function collectSources(value: unknown) {
-  const sources = new Map<string, { title: string; url: string }>();
-  const seen = new Set<unknown>();
-  const visit = (node: unknown, depth = 0) => {
-    if (depth > 8 || node === null || node === undefined || seen.has(node)) return;
-    if (typeof node === "string") {
-      for (const match of node.matchAll(/https?:\/\/[^\s\])}>"']+/g)) {
-        const url = validUrl(match[0]);
-        if (url && !sources.has(url)) sources.set(url, { title: new URL(url).hostname.replace(/^www\./, ""), url });
-      }
-      return;
-    }
-    if (typeof node !== "object") return;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      node.forEach((item) => visit(item, depth + 1));
-      return;
-    }
-    const object = node as Record<string, unknown>;
-    const url = validUrl(object.url || object.link || object.href || object.sourceUrl);
-    if (url) {
-      const title = String(object.title || object.name || object.label || new URL(url).hostname.replace(/^www\./, "")).slice(0, 140);
-      sources.set(url, { title, url });
-    }
-    Object.values(object).forEach((item) => visit(item, depth + 1));
-  };
-  visit(value);
-  return [...sources.values()].slice(0, 8);
-}
-
-function compactProviderResult(value: unknown) {
-  const object = value as Record<string, unknown> | null;
-  return JSON.stringify(object?.raw || value).slice(0, 16_000);
-}
-
-function completionText(value: unknown) {
-  const object = value as Record<string, unknown> | null;
-  if (typeof object?.completionText === "string") return object.completionText;
-  const strings: string[] = [];
-  const visit = (node: unknown, depth = 0) => {
-    if (depth > 7 || strings.length > 20 || node === null || node === undefined) return;
-    if (typeof node === "string") {
-      if (node.length > 40) strings.push(node);
-      return;
-    }
-    if (Array.isArray(node)) return node.forEach((item) => visit(item, depth + 1));
-    if (typeof node === "object") Object.values(node as Record<string, unknown>).forEach((item) => visit(item, depth + 1));
-  };
-  visit(value);
-  return strings.sort((a, b) => b.length - a.length)[0] || "";
-}
-
-function numberValue(value: unknown) {
+function numberValue(value: unknown, minimum: number, maximum: number) {
   const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
 }
 
-function placeCoordinates(object: Record<string, unknown>) {
-  const location = (object.location || object.position || {}) as Record<string, unknown>;
-  const geometry = (object.geometry || {}) as Record<string, unknown>;
-  const geometryLocation = (geometry.location || {}) as Record<string, unknown>;
-  const lat = numberValue(object.lat ?? object.latitude ?? location.lat ?? location.latitude ?? geometryLocation.lat ?? geometryLocation.latitude);
-  const lng = numberValue(object.lng ?? object.lon ?? object.longitude ?? location.lng ?? location.lon ?? location.longitude ?? geometryLocation.lng ?? geometryLocation.lon ?? geometryLocation.longitude);
-  return lat !== null && lng !== null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
-}
-
-function normalizeName(value: unknown) {
-  return String(value || "").toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-}
-
-function placeName(object: Record<string, unknown>) {
-  const displayName = object.displayName;
-  if (displayName && typeof displayName === "object") {
-    const text = (displayName as Record<string, unknown>).text;
-    if (text) return String(text);
-  }
-  return String(object.name || object.title || displayName || "");
-}
-
-function findBestPlace(value: unknown, expectedName: string) {
-  const candidates: Array<Record<string, unknown> & { coordinates: { lat: number; lng: number } }> = [];
-  const seen = new Set<unknown>();
-  const visit = (node: unknown, depth = 0) => {
-    if (depth > 9 || node === null || node === undefined || seen.has(node) || typeof node !== "object") return;
-    seen.add(node);
-    if (Array.isArray(node)) return node.forEach((item) => visit(item, depth + 1));
-    const object = node as Record<string, unknown>;
-    const coordinates = placeCoordinates(object);
-    const name = placeName(object);
-    if (coordinates && name) candidates.push({ ...object, coordinates });
-    Object.values(object).forEach((item) => visit(item, depth + 1));
-  };
-  visit(value);
-  const expected = normalizeName(expectedName);
-  return candidates.sort((a, b) => {
-    const score = (item: Record<string, unknown>) => {
-      const name = normalizeName(placeName(item));
-      if (name === expected) return 3;
-      if (name.includes(expected) || expected.includes(name)) return 2;
-      return expected.split(" ").filter((part) => name.includes(part)).length / Math.max(1, expected.split(" ").length);
-    };
-    return score(b) - score(a);
-  })[0] || null;
-}
-
-function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>) {
+function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>, mapSources: Array<Record<string, string>>) {
   if (!value || typeof value !== "object") throw new Error("Planner response is empty");
   const trip = value as Record<string, unknown>;
   if (!Array.isArray(trip.days) || trip.days.length !== input.days) throw new Error("Planner returned the wrong number of days");
@@ -196,6 +85,9 @@ function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>) 
       const stops = day.stops.slice(0, 5).map((rawStop) => {
         const stop = rawStop as Record<string, unknown>;
         const importance = ["must-see", "local", "optional"].includes(String(stop.importance)) ? String(stop.importance) : "optional";
+        const source = matchPlaceSource(stop, mapSources);
+        const lat = numberValue(stop.lat, -90, 90);
+        const lng = numberValue(stop.lng, -180, 180);
         return {
           id: crypto.randomUUID(),
           time: /^\d{2}:\d{2}$/.test(String(stop.time || "")) ? String(stop.time) : "10:00",
@@ -207,13 +99,15 @@ function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>) 
           why: String(stop.why || "").slice(0, 260),
           travelerNote: String(stop.travelerNote || "").slice(0, 260),
           importance,
-          address: "",
-          lat: null as number | null,
-          lng: null as number | null,
+          address: String(stop.address || "").slice(0, 200),
+          lat: lat !== null && lng !== null ? lat : null,
+          lng: lat !== null && lng !== null ? lng : null,
           placeId: "",
-          rating: null as number | null,
-          reviewCount: null as number | null,
-          verified: false
+          rating: null,
+          reviewCount: null,
+          verified: Boolean(source),
+          mapsSourceName: source?.title || "",
+          mapsSourceUrl: source?.url || ""
         };
       }).filter((stop) => stop.title);
       if (stops.length < 3) throw new Error("Planner returned too few stops for a day");
@@ -222,27 +116,97 @@ function normalizeTrip(value: unknown, input: ReturnType<typeof validateInput>) 
         date: addDays(input.startDate, dayIndex),
         title: String(day.title || `${dayIndex + 1}. gün`).slice(0, 100),
         theme: String(day.theme || "").slice(0, 180),
-        stops
+        stops: optimizeDayStops(stops)
       };
     })
   };
 }
 
-function credits(value: unknown) {
-  const amount = numberValue((value as Record<string, unknown> | null)?.creditsCharged);
-  return amount || 0;
+class GeminiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
-  const output = new Array<R>(items.length);
-  let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor++;
-      output[index] = await worker(items[index]);
+async function geminiRequest(path: string, apiKey: string, body: unknown) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetch(`${API_ROOT}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const providerMessage = String(payload?.error?.message || "");
+      const message = response.status === 429
+        ? "Yapay zekâ kotası şu anda kullanılamıyor. Daha sonra yeniden dene."
+        : response.status === 403
+          ? "Gemini anahtarı bu istek için yetkili değil."
+          : response.status === 400
+            ? "Gemini gezi isteğini kabul etmedi."
+            : "Gemini şu anda yanıt veremiyor.";
+      console.warn("Gemini request failed", response.status, providerMessage.slice(0, 180));
+      throw new GeminiError(message, response.status);
     }
-  }));
-  return output;
+    return payload;
+  } catch (error) {
+    if (error instanceof GeminiError) throw error;
+    if (error instanceof DOMException && error.name === "AbortError") throw new GeminiError("AI planlama zaman aşımına uğradı.", 504);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function finalSchema(days: number) {
+  const stop = {
+    type: "object",
+    additionalProperties: false,
+    required: ["time", "title", "query", "mapSourceName", "category", "duration", "notes", "why", "travelerNote", "importance", "address"],
+    properties: {
+      time: { type: "string", description: "24-hour HH:MM" },
+      title: { type: "string" },
+      query: { type: "string" },
+      mapSourceName: { type: "string", description: "Exact matching name from the supplied Google Maps sources, or empty only when no source exists" },
+      category: { type: "string" },
+      duration: { type: "string" },
+      notes: { type: "string" },
+      why: { type: "string" },
+      travelerNote: { type: "string" },
+      importance: { type: "string", enum: ["must-see", "local", "optional"] },
+      address: { type: "string" }
+    }
+  };
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["title", "country", "summary", "days"],
+    properties: {
+      title: { type: "string" },
+      country: { type: "string" },
+      summary: { type: "string" },
+      days: {
+        type: "array",
+        minItems: days,
+        maxItems: days,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "theme", "stops"],
+          properties: {
+            title: { type: "string" },
+            theme: { type: "string" },
+            stops: { type: "array", minItems: 3, maxItems: 5, items: stop }
+          }
+        }
+      }
+    }
+  };
 }
 
 Deno.serve(async (request: Request) => {
@@ -262,107 +226,97 @@ Deno.serve(async (request: Request) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) return json({ error: "Authentication required" }, request, 401);
 
-    const apiKey = Deno.env.get("AGENTIC_API_KEY");
-    if (!apiKey) return json({ error: "AgentRouter is not configured", code: "configuration_missing" }, request, 503);
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!apiKey) return json({ error: "Gemini is not configured", code: "configuration_missing" }, request, 503);
 
     const input = validateInput(await request.json());
-    const client = new AgentRouterClient({
-      apiKey,
-      baseUrl: Deno.env.get("AGENTIC_API_BASE_URL") || DEFAULT_AGENTIC_API_BASE_URL,
-      timeoutMs: 60_000
+    const model = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
+
+    const researchPrompt = `Research ${input.destination} for an evidence-led trip plan. Answer in Turkish. Cover: official tourism guidance; essential museums and cultural landmarks; reservation or closure caveats; respected local recommendations; neighborhood geography; and recurring traveler advice or common complaints found across credible discussions. Prefer official tourism and museum sources for facts. Clearly distinguish facts from recurring opinions. Never invent or quote an individual review. Keep it under 1,200 words.`;
+    const researchResponse = await geminiRequest("/interactions", apiKey, {
+      model,
+      input: researchPrompt,
+      tools: [{ type: "google_search" }]
     });
-    const modelRoute = Deno.env.get("AGENTROUTER_MODEL_ROUTE_KEY") || DEFAULT_MODEL_ROUTE;
-    const model = Deno.env.get("AGENTROUTER_MODEL") || DEFAULT_MODEL;
-    const searchRoute = Deno.env.get("AGENTROUTER_SEARCH_ROUTE_KEY") || DEFAULT_SEARCH_ROUTE;
-    const placesRoute = Deno.env.get("AGENTROUTER_PLACES_ROUTE_KEY") || DEFAULT_PLACES_ROUTE;
-    let totalCredits = 0;
+    const researchText = interactionText(researchResponse);
+    const searchSources = interactionSources(researchResponse, "url_citation");
+    if (researchText.length < 80 || !searchSources.length) throw new Error("Destination research returned no usable evidence");
 
-    const researchQuery = `${input.destination} travel planning: official tourism guidance, the most important museums and cultural landmarks, respected local recommendations, recurring traveler advice and common complaints, advance reservation needs, and neighborhood geography. Prefer official museum/tourism sources for facts and reputable travel discussions for recurring visitor patterns. Distinguish facts from opinions. Do not use invented reviews or quotes.`;
-    const research = await client.capabilities.execute({
-      domain: "search",
-      capability: "answer",
-      routeKey: searchRoute,
-      input: { query: researchQuery, maxResults: 8 },
-      allowFallback: false
+    const mapsPrompt = `Create an English planning brief for an optimized ${input.days}-day itinerary in ${input.destination}, starting ${input.startDate}. Traveler style: ${input.style}. Pace: ${input.pace}. Special note: ${input.note || "none"}.
+
+Use Google Maps grounding for every named venue. Select 3-5 stops per day and group each day into one or two adjacent neighborhoods. Minimize backtracking and city crisscrossing. Preserve realistic morning, lunch/rest, afternoon, and evening timing. Include the essential museums or landmarks that genuinely matter, but no more than one major museum per day unless requested. Balance them with strong local places. For each stop, give the exact Google Maps place name, neighborhood, sensible duration, why it belongs, and only recurring review advice or caveats supported by Maps data. Never invent a review or quote a reviewer. Do not guarantee opening hours, tickets, prices, or availability. Return a concise day-by-day planning brief, not JSON.
+
+Independent destination research to consider:
+${researchText.slice(0, 12_000)}`;
+    const mapsResponse = await geminiRequest("/interactions", apiKey, {
+      model,
+      input: mapsPrompt,
+      tools: [{ type: "google_maps" }]
     });
-    totalCredits += credits(research);
-    const researchPayload = compactProviderResult(research);
-    if (researchPayload.length < 80) throw new Error("Destination research returned no usable evidence");
-    const researchSources = collectSources(research);
+    const mapsText = interactionText(mapsResponse);
+    const mapSources = interactionSources(mapsResponse, "place_citation");
+    if (mapsText.length < 80 || !mapSources.length) throw new Error("Google Maps could not ground the route");
 
-    const prompt = `Create a culturally meaningful and geographically sensible itinerary from the supplied research.\nDestination: ${input.destination}\nStart date: ${input.startDate}\nDays: ${input.days}\nStyle: ${input.style}\nPace: ${input.pace}\nTraveler note: ${input.note || "none"}\n\nRESEARCH PAYLOAD:\n${researchPayload}\n\nRules:\n- Use exactly ${input.days} days and 3-5 stops per day.\n- Include genuinely important museums or landmarks when appropriate, but no more than one major museum per day unless the traveler requested otherwise.\n- Group each day into one or two adjacent neighborhoods. Do not crisscross the city.\n- Keep morning, lunch, afternoon, and evening timing realistic, including visit duration and rest.\n- Use local advice and recurring traveler feedback only when supported by the research. Paraphrase patterns; never invent or quote an individual review.\n- "why" explains the stop's value. "travelerNote" gives a source-grounded recurring tip or caveat, not promotional copy.\n- "query" must be the exact searchable venue or landmark name plus city.\n- Never guarantee opening hours, tickets, prices, availability, safety, weather, or live conditions. Tell the traveler to recheck time-sensitive details.\n- Write all traveler-facing text in natural Turkish.\n\nReturn JSON only in this shape: {"title":"","country":"","summary":"","days":[{"title":"","theme":"","stops":[{"time":"HH:MM","title":"","query":"","category":"","duration":"","notes":"","why":"","travelerNote":"","importance":"must-see|local|optional"}]}]}`;
+    const sourceNames = mapSources.map((source) => `- ${source.title}`).join("\n");
+    const finalPrompt = `Turn the grounded material below into Roamly's final itinerary JSON. All traveler-facing content must be natural Turkish. Preserve the exact day and stop order from the Google Maps planning brief because that order is already geographically optimized.
 
-    const modelResult = await client.capabilities.execute({
-      domain: "models",
-      capability: "chat-complete",
-      routeKey: modelRoute,
-      input: {
-        model,
-        messages: [
-          { role: "system", content: "You are Roamly's evidence-led itinerary editor. Use only the supplied research for destination claims and return valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.2
-      },
-      allowFallback: false
-    });
-    totalCredits += credits(modelResult);
-    const trip = normalizeTrip(parseCompletion(completionText(modelResult)), input);
+Trip: ${input.destination}, ${input.startDate}, exactly ${input.days} days
+Style: ${input.style}
+Pace: ${input.pace}
+Traveler note: ${input.note || "none"}
 
-    const stopEntries = trip.days.flatMap((day, dayIndex) => day.stops.map((stop, stopIndex) => ({ dayIndex, stopIndex, stop })));
-    const verifiedStops = await mapLimit(stopEntries, 3, async ({ stop }) => {
-      try {
-        const placeResult = await client.capabilities.execute({
-          domain: "geo",
-          capability: "places-search",
-          routeKey: placesRoute,
-          input: { query: stop.query || `${stop.title}, ${input.destination}` },
-          allowFallback: false
-        });
-        totalCredits += credits(placeResult);
-        const place = findBestPlace(placeResult, stop.title);
-        if (!place) return stop;
-        const address = String(place.formattedAddress || place.formatted_address || place.address || place.vicinity || "").slice(0, 200);
-        return {
-          ...stop,
-          title: String(placeName(place) || stop.title).slice(0, 120),
-          address,
-          lat: place.coordinates.lat,
-          lng: place.coordinates.lng,
-          placeId: String(place.placeId || place.place_id || place.id || "").slice(0, 180),
-          rating: numberValue(place.rating),
-          reviewCount: numberValue(place.userRatingCount || place.user_ratings_total || place.reviewCount || place.reviewsCount),
-          verified: true
-        };
-      } catch (error) {
-        console.warn("Place verification skipped", stop.title, error instanceof Error ? error.message : error);
-        return stop;
+Rules:
+- Exactly ${input.days} days and 3-5 stops per day.
+- Use only venues named in the Google Maps source list below.
+- mapSourceName must exactly copy the matching source name. Never invent a source name.
+- Keep each day within one or two adjacent neighborhoods and do not reorder into backtracking.
+- Include meals/rest when useful, but only if there is a matching Maps source.
+- No more than one major museum per day unless the traveler explicitly asked otherwise.
+- travelerNote must paraphrase only recurring advice supported by the research or Maps brief. If none exists, use an empty string. Never fabricate or quote a traveler.
+- Never claim live opening hours, prices, ticket availability, safety, or weather. In notes, tell the user to recheck time-sensitive details when relevant.
+- query should be the exact venue name plus ${input.destination}.
+
+GOOGLE MAPS SOURCE NAMES:
+${sourceNames}
+
+GOOGLE MAPS OPTIMIZED BRIEF:
+${mapsText.slice(0, 16_000)}
+
+SEARCH-GROUNDED RESEARCH:
+${researchText.slice(0, 12_000)}`;
+    const finalResponse = await geminiRequest(`/models/${encodeURIComponent(model)}:generateContent`, apiKey, {
+      contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+      generationConfig: {
+        temperature: 0.15,
+        responseMimeType: "application/json",
+        responseSchema: finalSchema(input.days)
       }
     });
+    const finalText = finalResponse?.candidates?.[0]?.content?.parts?.map((part: Record<string, unknown>) => part.text || "").join("") || "";
+    const trip = normalizeTrip(parseCompletion(finalText), input, mapSources);
+    const stops = trip.days.flatMap((day) => day.stops);
+    const verifiedCount = stops.filter((stop) => stop.verified).length;
+    const researchSources = mergeSources(searchSources, mapSources).slice(0, 12);
 
-    stopEntries.forEach(({ dayIndex, stopIndex }, index) => {
-      trip.days[dayIndex].stops[stopIndex] = verifiedStops[index];
-    });
-    trip.days = trip.days.map((day) => ({ ...day, stops: optimizeDayStops(day.stops) }));
-
-    const verifiedCount = verifiedStops.filter((stop) => stop.verified).length;
     return json({
       trip: {
         ...trip,
-        researchSummary: "Önemli duraklar, yerel öneriler ve tekrar eden gezgin deneyimleri güncel kaynaklardan birlikte değerlendirildi.",
+        researchSummary: "Resmî bilgiler, önemli müzeler, yerel öneriler ve tekrar eden gezgin deneyimleri güncel web ve Google Maps kaynaklarıyla birlikte değerlendirildi.",
         researchSources,
         plannerMeta: {
+          provider: model,
           researched: true,
           verifiedPlaces: verifiedCount,
-          totalPlaces: verifiedStops.length,
+          totalPlaces: stops.length,
           routeOptimized: true,
+          routeMethod: "Google Maps grounding",
           timeSensitiveDetailsNeedRecheck: true
         }
-      },
-      creditsCharged: totalCredits || null
+      }
     }, request);
   } catch (error) {
     console.error("plan-trip failed", error instanceof Error ? error.message : error);
-    return json({ error: error instanceof Error ? error.message : "Plan could not be created" }, request, 500);
+    const status = error instanceof GeminiError ? error.status : 500;
+    return json({ error: error instanceof Error ? error.message : "Plan could not be created" }, request, status);
   }
 });

@@ -21,7 +21,7 @@ export async function generateTrip(input) {
     pace: input.pace,
     note: input.note,
     coverKey: destinationKey(input.destination),
-    source: 'agentrouter',
+    source: 'gemini',
     status: 'planning',
     expenses: [],
     journals: [],
@@ -29,4 +29,3 @@ export async function generateTrip(input) {
     updatedAt: new Date().toISOString()
   };
 }
-

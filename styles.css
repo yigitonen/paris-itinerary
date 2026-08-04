@@ -229,6 +229,8 @@ body.offline .offline-notice { display: block; }
 .stop-card:hover { border-color: #bfbab0; }
 .stop-card > div { flex: 1; min-width: 0; }
 .stop-card h3 { font: 600 16px Georgia, serif; margin: 0 0 4px; }
+.maps-attribution { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 8px; color: #4169a1; font-size: 7px; font-weight: 750; }
+.maps-attribution svg { width: 10px; height: 10px; }
 .stop-card p { color: var(--muted); font-size: 9px; line-height: 1.5; margin: 0; }
 .stop-card small { display: block; color: #9a7768; font-size: 7px; margin-top: 7px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
 .stop-leg { width: fit-content; display: flex; align-items: center; gap: 5px; margin: 0 0 9px; padding: 5px 8px; border-radius: 99px; background: #eef2eb; color: var(--forest); font-size: 7px; font-weight: 750; }
@@ -259,6 +261,7 @@ body.offline .offline-notice { display: block; }
 .source-list { display: grid; border-top: 1px solid var(--line); }
 .source-list a { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 8px; }
 .source-list a span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-list a small { display: block; margin-top: 2px; color: var(--muted); font-size: 6px; text-transform: uppercase; letter-spacing: .06em; }
 .source-list a svg { width: 12px; color: var(--muted); }
 .trip-side-card .evidence-caveat { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; color: #836a5f; }
 .evidence-caveat svg { width: 13px; flex: 0 0 auto; margin-top: 1px; }

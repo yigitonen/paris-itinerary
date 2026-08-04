@@ -31,7 +31,7 @@
 
 ## Before signing and store submission
 
-- [ ] Add a current `agentrouter.to` Agentic API key (`aak_…`) as the `AGENTIC_API_KEY` Supabase Edge Function secret and complete a signed-in AI plan smoke test. Do not use an `agentrouter.org` coding-proxy token.
+- [ ] Return the Gemini API project to the Free Tier (the current project's Prepay balance is depleted), replace the protected `GEMINI_API_KEY` secret if Google issues a new key, and complete a signed-in AI plan smoke test.
 - [ ] Enable Supabase leaked-password protection for email authentication.
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.
@@ -47,5 +47,5 @@
 - Photos/camera: user-initiated memory capture only.
 - User content: trips, journal, budget, and memories; device-local in guest mode and private cloud storage after sign-in.
 - Contact info: email for account sync or a Locals early-access request.
-- AI input: the trip brief is sent through Roamly's protected backend to AgentRouter only when the user requests an AI plan.
+- AI input: the trip brief is sent through Roamly's protected backend to Google Gemini only when the user requests an AI plan. On Google's free tier, submitted content may be used to improve Google products.
 - Tracking/advertising: none.
