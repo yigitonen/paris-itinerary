@@ -2,10 +2,11 @@ import { Capacitor } from '@capacitor/core';
 import { createClient } from '@supabase/supabase-js';
 import { GUEST_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config.js';
 import { createDemoTrip } from './data.js';
-import { enqueueSync, isNetworkError, isOffline, readCloudCache, readSyncQueue, removeSyncEntries, syncEntryKey, writeCloudCache } from './offline.js';
+import { classifySyncError, clearFailedSyncForTrip, enqueueSync, isNetworkError, isOffline, MAX_SYNC_ATTEMPTS, moveSyncEntriesToFailed, readCloudCache, readFailedSync, readSyncQueue, recordSyncAttempt, removeSyncEntries, syncEntryKey, writeCloudCache } from './offline.js';
 
 const NATIVE_AUTH_REDIRECT = 'roamly://localhost/';
 const NATIVE_AUTH_PROTOCOLS = new Set(['roamly:', 'capacitor:', 'ionic:']);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function currentUrl(value) {
   const candidate = value || globalThis.location?.href;
@@ -174,7 +175,9 @@ export async function loadTrips(session) {
     return await inCloudOrder(async () => {
       const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
       if (error) throw error;
-      const trips = withPendingChanges(data.map(fromRow), readSyncQueue(userId), cached);
+      // A rejected change stays visible locally (before newer queued ones); a rejected delete is not applied, since the server still has the trip.
+      const failedUpserts = readFailedSync(userId).filter((entry) => entry.type === 'upsert');
+      const trips = withPendingChanges(data.map(fromRow), [...failedUpserts, ...readSyncQueue(userId)], cached);
       writeCloudCache(userId, trips);
       return trips;
     });
@@ -184,8 +187,12 @@ export async function loadTrips(session) {
   }
 }
 
+// Conflicts between devices: last write to reach the server wins, per trip (whole-row upsert, no field merge).
+// Other trips are unaffected. Rejected writes move to the failed list, stay visible locally, and clear when the
+// trip is saved or deleted successfully.
 export async function saveTrip(trip, session, currentTrips) {
   const nextTrip = { ...trip, updatedAt: new Date().toISOString() };
+  if (trip.source === 'demo') nextTrip.demoEdited = true;
   if (!session) {
     const next = replaceTrip(currentTrips, nextTrip);
     writeGuestTrips(next);
@@ -206,6 +213,7 @@ export async function saveTrip(trip, session, currentTrips) {
       const { data, error } = await supabase.from('trips').upsert(row).select().single();
       if (error) throw error;
       removeSyncEntries(userId, superseded);
+      clearFailedSyncForTrip(userId, row.id);
       const saved = fromRow(data);
       const next = replaceTrip(currentTrips, saved);
       writeCloudCache(userId, next);
@@ -237,6 +245,7 @@ export async function deleteTrip(tripId, session, currentTrips) {
       const { error } = await supabase.from('trips').delete().eq('id', tripId);
       if (error) throw error;
       removeSyncEntries(userId, superseded);
+      clearFailedSyncForTrip(userId, tripId);
       writeCloudCache(userId, next);
       return next;
     } catch (error) {
@@ -252,6 +261,10 @@ export function pendingTripSyncCount(session) {
   return session ? readSyncQueue(session.user.id).length : 0;
 }
 
+export function failedTripSyncCount(session) {
+  return session ? readFailedSync(session.user.id).length : 0;
+}
+
 export async function flushPendingTripChanges(session) {
   if (!session || isOffline()) return 0;
   const userId = session.user.id;
@@ -264,24 +277,48 @@ export async function flushPendingTripChanges(session) {
       const request = mutation.type === 'delete'
         ? supabase.from('trips').delete().eq('id', mutation.tripId)
         : supabase.from('trips').upsert(mutation.row);
-      const { error } = await request;
-      if (error) throw error;
-      removeSyncEntries(userId, [mutation]);
-      completed += 1;
+      const { error, status } = await request;
+      if (!error) {
+        removeSyncEntries(userId, [mutation]);
+        clearFailedSyncForTrip(userId, mutation.tripId);
+        completed += 1;
+        continue;
+      }
+      // A change the server will never accept must not block the ones behind it; network and transient errors stay queued.
+      const rejected = classifySyncError(error, status) === 'reject' || (!isNetworkError(error) && recordSyncAttempt(userId, mutation) >= MAX_SYNC_ATTEMPTS);
+      if (!rejected) throw error;
+      moveSyncEntriesToFailed(userId, [mutation], { error, status });
     }
     return completed;
   });
 }
 
+export function isEditedDemoTrip(trip) {
+  if (trip?.source !== 'demo') return false;
+  if (trip.demoEdited === true) return true;
+  // Examples edited before the marker existed: createManualTrip stamps both times within microseconds.
+  return Date.parse(trip.updatedAt) - Date.parse(trip.createdAt) > 2000;
+}
+
 export async function migrateGuestTrips(session) {
   if (!session) return [];
-  const guestTrips = readGuestTrips().filter((trip) => trip.source !== 'demo');
-  if (!guestTrips.length) return [];
-  const rows = guestTrips.map((trip) => toRow(trip, session.user.id));
-  const { data, error } = await supabase.from('trips').upsert(rows).select();
-  if (error) throw error;
-  localStorage.removeItem(GUEST_STORAGE_KEY);
-  return data.map(fromRow);
+  return inCloudOrder(async () => {
+    const guestTrips = readGuestTrips();
+    const uploads = new Set(guestTrips.filter((trip) => trip.source !== 'demo' || isEditedDemoTrip(trip)));
+    if (!uploads.size) return [];
+    // Fix ids and store them before uploading, so a retry reuses the same ids instead of duplicating trips.
+    const prepared = guestTrips.map((trip) => {
+      if (!uploads.has(trip)) return trip;
+      const { demoEdited, ...rest } = trip;
+      return { ...rest, id: UUID_PATTERN.test(trip.id) ? trip.id : crypto.randomUUID(), ...(trip.source === 'demo' && { source: 'manual' }) };
+    });
+    writeGuestTrips(prepared);
+    const rows = prepared.filter((_trip, index) => uploads.has(guestTrips[index])).map((trip) => toRow(trip, session.user.id));
+    const { data, error } = await supabase.from('trips').upsert(rows).select();
+    if (error) throw error;
+    localStorage.removeItem(GUEST_STORAGE_KEY);
+    return data.map(fromRow);
+  });
 }
 
 export async function joinLocalsWaitlist({ email, city, note }, session) {

@@ -3,6 +3,7 @@ import { COVER_IMAGES, createManualTrip } from './src/data.js';
 import {
   completePkceCallback,
   deleteTrip,
+  failedTripSyncCount,
   flushPendingTripChanges,
   getSession,
   joinLocalsWaitlist,
@@ -918,21 +919,34 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+let reportedSyncFailures = { userId: null, count: 0 };
+function reportSyncFailures() {
+  if (!state.session) return;
+  const userId = state.session.user.id;
+  const failed = failedTripSyncCount(state.session);
+  const previous = reportedSyncFailures.userId === userId ? reportedSyncFailures.count : 0;
+  if (failed) setSync(`${failed} değişiklik eşitlenemedi`, 'error');
+  if (failed > previous) toast('Bulut bazı değişiklikleri kabul etmedi. Yerel kopyaları bu cihazda duruyor; seyahati düzenleyip yeniden kaydet.', 'error');
+  reportedSyncFailures = { userId, count: failed };
+}
+
 function setOnlineState() { document.body.classList.toggle('offline', !navigator.onLine); }
 async function handleOnline() {
   setOnlineState();
   if (!state.session) return;
   const pending = pendingTripSyncCount(state.session);
-  if (!pending) { await refreshTrips(); return; }
+  if (!pending) { await refreshTrips(); reportSyncFailures(); return; }
   setSync('Değişiklikler eşitleniyor', 'syncing');
   try {
     const completed = await flushPendingTripChanges(state.session);
     await refreshTrips();
+    reportSyncFailures();
     if (completed) toast(`${completed} çevrimdışı değişiklik bulutla eşitlendi.`);
   } catch (error) {
     console.error(error);
     setSync('Eşitleme bekliyor', 'error');
     toast('Çevrimdışı değişiklikler henüz eşitlenemedi. Tekrar denenecek.', 'error');
+    reportSyncFailures();
   }
 }
 window.addEventListener('online', handleOnline);

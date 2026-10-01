@@ -22,6 +22,13 @@ one interface and save to the same trip.
 - Roamly Locals is an honest early-access waitlist until identity, safety,
   support, and marketplace operations are ready.
 
+## Sync and conflicts
+
+Signed-in changes made offline wait in a per-account queue and upload when the connection returns.
+Conflicts are last write wins per trip: the whole trip is replaced, there is no field merge, and other trips are unaffected.
+A change the server rejects leaves the queue so it cannot block later ones; it stays on this device, is counted in the sync status, and clears when the trip is saved or deleted again.
+At sign-in, guest trips move to the account, including an example trip you edited; an untouched example stays behind.
+
 ## Local development
 
 ```sh
