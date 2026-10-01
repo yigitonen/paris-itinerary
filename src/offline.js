@@ -33,9 +33,17 @@ export function enqueueSync(userId, mutation) {
   const queue = readSyncQueue(userId);
   const key = `${mutation.type}:${mutation.tripId}`;
   const compacted = queue.filter((entry) => `${entry.type}:${entry.tripId}` !== key && entry.tripId !== mutation.tripId);
-  compacted.push({ ...mutation, queuedAt: new Date().toISOString() });
+  compacted.push({ ...mutation, id: crypto.randomUUID(), queuedAt: new Date().toISOString() });
   writeSyncQueue(userId, compacted);
   return compacted.length;
+}
+
+export const syncEntryKey = (entry) => entry.id || `${entry.type}:${entry.tripId}:${entry.queuedAt}`;
+
+// Removes only these entries from the latest stored queue, keeping anything queued since they were read.
+export function removeSyncEntries(userId, entries) {
+  const done = new Set(entries.map(syncEntryKey));
+  writeSyncQueue(userId, readSyncQueue(userId).filter((entry) => !done.has(syncEntryKey(entry))));
 }
 
 export function isOffline() {

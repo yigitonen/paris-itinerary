@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { createClient } from '@supabase/supabase-js';
 import { GUEST_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config.js';
 import { createDemoTrip } from './data.js';
-import { enqueueSync, isNetworkError, isOffline, readCloudCache, readSyncQueue, writeCloudCache, writeSyncQueue } from './offline.js';
+import { enqueueSync, isNetworkError, isOffline, readCloudCache, readSyncQueue, removeSyncEntries, syncEntryKey, writeCloudCache } from './offline.js';
 
 const NATIVE_AUTH_REDIRECT = 'roamly://localhost/';
 const NATIVE_AUTH_PROTOCOLS = new Set(['roamly:', 'capacitor:', 'ionic:']);
@@ -140,6 +140,22 @@ const fromRow = (row) => ({
   updatedAt: row.updated_at
 });
 
+// Queued offline changes stay visible over cloud data until they reach the cloud.
+const withPendingChanges = (trips, queue, cached) => queue.reduce((list, mutation) => {
+  if (mutation.type === 'delete') return list.filter((trip) => trip.id !== mutation.tripId);
+  const previous = list.find((trip) => trip.id === mutation.tripId) || cached.find((trip) => trip.id === mutation.tripId);
+  return replaceTrip(list, fromRow({ created_at: previous?.createdAt, updated_at: mutation.queuedAt, ...mutation.row }));
+}, trips);
+
+let cloudWork = Promise.resolve();
+
+// Cloud reads and writes run one at a time, so an older request can never land after a newer one.
+function inCloudOrder(task) {
+  const run = cloudWork.then(task);
+  cloudWork = run.catch(() => {});
+  return run;
+}
+
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
@@ -155,11 +171,13 @@ export async function loadTrips(session) {
     throw new Error('Bu hesaptaki seyahatler henüz bu cihaza indirilmedi. İnternete bağlanıp bir kez açman gerekiyor.');
   }
   try {
-    const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
-    if (error) throw error;
-    const trips = data.map(fromRow);
-    writeCloudCache(userId, trips);
-    return trips;
+    return await inCloudOrder(async () => {
+      const { data, error } = await supabase.from('trips').select('*').order('start_date', { ascending: true });
+      if (error) throw error;
+      const trips = withPendingChanges(data.map(fromRow), readSyncQueue(userId), cached);
+      writeCloudCache(userId, trips);
+      return trips;
+    });
   } catch (error) {
     if (cached.length && isNetworkError(error)) return cached;
     throw error;
@@ -181,19 +199,24 @@ export async function saveTrip(trip, session, currentTrips) {
     enqueueSync(userId, { type: 'upsert', tripId: row.id, row });
     return { trip: nextTrip, trips: localTrips, pendingSync: true };
   }
-  try {
-    const { data, error } = await supabase.from('trips').upsert(row).select().single();
-    if (error) throw error;
-    const saved = fromRow(data);
-    const next = replaceTrip(currentTrips, saved);
-    writeCloudCache(userId, next);
-    return { trip: saved, trips: next, pendingSync: false };
-  } catch (error) {
-    if (!isNetworkError(error)) throw error;
-    writeCloudCache(userId, localTrips);
-    enqueueSync(userId, { type: 'upsert', tripId: row.id, row });
-    return { trip: nextTrip, trips: localTrips, pendingSync: true };
-  }
+  // Changes queued before this save are older than it; anything queued while it waits is kept.
+  const superseded = readSyncQueue(userId).filter((entry) => entry.tripId === row.id);
+  return inCloudOrder(async () => {
+    try {
+      const { data, error } = await supabase.from('trips').upsert(row).select().single();
+      if (error) throw error;
+      removeSyncEntries(userId, superseded);
+      const saved = fromRow(data);
+      const next = replaceTrip(currentTrips, saved);
+      writeCloudCache(userId, next);
+      return { trip: saved, trips: next, pendingSync: false };
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      writeCloudCache(userId, localTrips);
+      enqueueSync(userId, { type: 'upsert', tripId: row.id, row });
+      return { trip: nextTrip, trips: localTrips, pendingSync: true };
+    }
+  });
 }
 
 export async function deleteTrip(tripId, session, currentTrips) {
@@ -208,17 +231,21 @@ export async function deleteTrip(tripId, session, currentTrips) {
     enqueueSync(userId, { type: 'delete', tripId });
     return next;
   }
-  try {
-    const { error } = await supabase.from('trips').delete().eq('id', tripId);
-    if (error) throw error;
-    writeCloudCache(userId, next);
-    return next;
-  } catch (error) {
-    if (!isNetworkError(error)) throw error;
-    writeCloudCache(userId, next);
-    enqueueSync(userId, { type: 'delete', tripId });
-    return next;
-  }
+  const superseded = readSyncQueue(userId).filter((entry) => entry.tripId === tripId);
+  return inCloudOrder(async () => {
+    try {
+      const { error } = await supabase.from('trips').delete().eq('id', tripId);
+      if (error) throw error;
+      removeSyncEntries(userId, superseded);
+      writeCloudCache(userId, next);
+      return next;
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      writeCloudCache(userId, next);
+      enqueueSync(userId, { type: 'delete', tripId });
+      return next;
+    }
+  });
 }
 
 export function pendingTripSyncCount(session) {
@@ -228,23 +255,22 @@ export function pendingTripSyncCount(session) {
 export async function flushPendingTripChanges(session) {
   if (!session || isOffline()) return 0;
   const userId = session.user.id;
-  const queue = readSyncQueue(userId);
-  if (!queue.length) return 0;
-  let completed = 0;
-  for (let index = 0; index < queue.length; index += 1) {
-    const mutation = queue[index];
-    const request = mutation.type === 'delete'
-      ? supabase.from('trips').delete().eq('id', mutation.tripId)
-      : supabase.from('trips').upsert(mutation.row);
-    const { error } = await request;
-    if (error) {
-      writeSyncQueue(userId, queue.slice(index));
-      throw error;
+  // Only changes queued before this flush was requested; later ones go after any save already waiting in line.
+  const batch = new Set(readSyncQueue(userId).map(syncEntryKey));
+  const nextMutation = () => readSyncQueue(userId).find((entry) => batch.has(syncEntryKey(entry)));
+  return inCloudOrder(async () => {
+    let completed = 0;
+    for (let mutation = nextMutation(); mutation && !isOffline(); mutation = nextMutation()) {
+      const request = mutation.type === 'delete'
+        ? supabase.from('trips').delete().eq('id', mutation.tripId)
+        : supabase.from('trips').upsert(mutation.row);
+      const { error } = await request;
+      if (error) throw error;
+      removeSyncEntries(userId, [mutation]);
+      completed += 1;
     }
-    completed += 1;
-    writeSyncQueue(userId, queue.slice(index + 1));
-  }
-  return completed;
+    return completed;
+  });
 }
 
 export async function migrateGuestTrips(session) {
