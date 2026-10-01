@@ -15,7 +15,7 @@ import {
   supabase
 } from './src/repository.js';
 import { generateTrip } from './src/planner.js';
-import { createPlacesClient, debounce, NEARBY_CATEGORIES } from './src/places.js';
+import { createPlacesClient, debounce, NEARBY_CATEGORIES, placeSearchMessage } from './src/places.js';
 import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
 import { renderRouteMap } from './src/map.js';
 import { ensureProfile, loadConnections, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
@@ -525,7 +525,7 @@ function openStopForm(dayId, stopId) {
 function renderPlaceSuggestions() {
   const root = $('#placeSuggestions');
   if (!root) return;
-  root.innerHTML = state.placeSuggestions.map((place, index) => `<button type="button" role="option" data-place-suggestion="${index}"><span><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || 'Ayrıntıları görmek için seç')}</small></span><em>${place.provider === 'google' ? 'Google' : 'OSM'}</em></button>`).join('');
+  root.innerHTML = state.placeSuggestions.map((place, index) => `<button type="button" role="option" data-place-suggestion="${index}"><span><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || 'Ayrıntıları görmek için seç')}</small></span><em>Google</em></button>`).join('');
 }
 
 function applyPlaceToStopForm(place) {
@@ -539,7 +539,7 @@ function applyPlaceToStopForm(place) {
   form.elements.googleMapsUrl.value = place.googleMapsUrl || '';
   form.elements.rating.value = place.rating ?? '';
   form.elements.reviewCount.value = place.reviewCount ?? '';
-  $('#placeProviderNote').textContent = place.provider === 'google' ? 'Google Places sonucu seçildi.' : 'OpenStreetMap sonucu seçildi.';
+  $('#placeProviderNote').textContent = place.provider === 'google' ? 'Google Places sonucu seçildi.' : 'Kayıtlı yer seçildi.';
   state.placeSuggestions = [];
   renderPlaceSuggestions();
 }
@@ -548,13 +548,14 @@ const searchStopPlaces = debounce(async (query) => {
   placeSearchController?.abort();
   placeSearchController = new AbortController();
   if (String(query).trim().length < 3) { state.placeSuggestions = []; renderPlaceSuggestions(); return; }
+  if (!state.session) { state.placeSuggestions = []; renderPlaceSuggestions(); $('#placeProviderNote').textContent = placeSearchMessage('signed_out'); return; }
   try {
     $('#placeProviderNote').textContent = 'Yerler aranıyor…';
     state.placeSuggestions = await places.autocomplete(`${query} ${activeTrip()?.destination || ''}`, { limit: 7, locationBias: dayCenter(activeTrip()?.days.find((item) => item.id === state.activeDayId)), signal: placeSearchController.signal });
     renderPlaceSuggestions();
-    $('#placeProviderNote').textContent = state.placeSuggestions.some((place) => place.provider === 'google') ? 'Google Places sonuçları' : 'OpenStreetMap sonuçları · Google anahtarı eklenince otomatik olarak Google kullanılır.';
+    $('#placeProviderNote').textContent = 'Google Places sonuçları';
   } catch (error) {
-    if (error.name !== 'AbortError') $('#placeProviderNote').textContent = 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.';
+    if (error.name !== 'AbortError') { state.placeSuggestions = []; renderPlaceSuggestions(); $('#placeProviderNote').textContent = placeSearchMessage(error); }
   }
 }, 300);
 
@@ -592,7 +593,7 @@ document.addEventListener('click', async (event) => {
       applyPlaceToStopForm(suggestion.provider === 'google' && (suggestion.lat === null || suggestion.lng === null)
         ? await places.details(suggestion, { query: suggestion.name })
         : suggestion);
-    } catch (error) { console.error(error); toast('Yer ayrıntıları alınamadı. Başka bir sonuç dene.', 'error'); }
+    } catch (error) { console.error(error); toast(placeSearchMessage(error), 'error'); }
     return;
   }
   if (control.dataset.filter) {
@@ -629,6 +630,7 @@ document.addEventListener('click', async (event) => {
     const day = trip.days.find((item) => item.id === state.activeDayId);
     const center = dayCenter(day);
     if (!center) { toast('Yakındakileri bulmak için önce aramadan konumlu bir durak ekle.', 'error'); return; }
+    if (!state.session) { toast(placeSearchMessage('signed_out'), 'error'); return; }
     state.nearbyCategory = control.dataset.category;
     state.nearbyResults = [];
     renderTripDetail();
@@ -636,7 +638,7 @@ document.addEventListener('click', async (event) => {
       state.nearbyResults = await places.nearby({ ...center, category: state.nearbyCategory, radiusMeters: 1800, limit: 8 });
       renderTripDetail();
       if (!state.nearbyResults.length) toast('Yakında bu kategoride bir yer bulunamadı.');
-    } catch (error) { console.error(error); toast('Yakındaki yerler alınamadı.', 'error'); }
+    } catch (error) { console.error(error); toast(placeSearchMessage(error), 'error'); }
   }
   if (action === 'add-nearby') {
     const place = state.nearbyResults[Number(control.dataset.placeIndex)];

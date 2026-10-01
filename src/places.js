@@ -1,16 +1,15 @@
 import { supabase } from './repository.js';
 
 const DEFAULT_FUNCTION_NAME = 'places';
-const DEFAULT_NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 3;
 
 export const NEARBY_CATEGORIES = Object.freeze({
-  breakfast: Object.freeze({ primaryType: 'breakfast', osmQuery: 'breakfast' }),
-  lunch: Object.freeze({ primaryType: 'restaurant', osmQuery: 'restaurant' }),
-  dinner: Object.freeze({ primaryType: 'restaurant', osmQuery: 'restaurant' }),
-  cafe: Object.freeze({ primaryType: 'cafe', osmQuery: 'cafe' }),
-  attractions: Object.freeze({ primaryType: 'tourist_attraction', osmQuery: 'tourist attraction' })
+  breakfast: Object.freeze({ primaryType: 'breakfast' }),
+  lunch: Object.freeze({ primaryType: 'restaurant' }),
+  dinner: Object.freeze({ primaryType: 'restaurant' }),
+  cafe: Object.freeze({ primaryType: 'cafe' }),
+  attractions: Object.freeze({ primaryType: 'tourist_attraction' })
 });
 
 function abortError() {
@@ -108,54 +107,6 @@ function normalizeList(payload, providerHint) {
   return source.map((place) => normalizePlace(place, providerHint)).filter(Boolean);
 }
 
-async function responseError(response) {
-  let detail = '';
-  try {
-    const body = await response.clone().json();
-    detail = text(body?.error || body?.message);
-  } catch {
-    try { detail = text(await response.clone().text()); } catch { /* keep status only */ }
-  }
-  return new Error(detail || `Place search failed with HTTP ${response.status}.`);
-}
-
-async function fetchJson(fetchImpl, url, signal) {
-  throwIfAborted(signal);
-  const response = await fetchImpl(url, {
-    method: 'GET',
-    headers: { Accept: 'application/json', 'Accept-Language': 'tr,en;q=0.8' },
-    signal
-  });
-  if (!response.ok) throw await responseError(response);
-  return response.json();
-}
-
-function boundsAround(lat, lng, radiusMeters) {
-  const latitudeDelta = radiusMeters / 111_320;
-  const longitudeDelta = radiusMeters / Math.max(1, 111_320 * Math.cos(lat * Math.PI / 180));
-  return {
-    west: lng - longitudeDelta,
-    north: lat + latitudeDelta,
-    east: lng + longitudeDelta,
-    south: lat - latitudeDelta
-  };
-}
-
-function addLocationBias(params, bias) {
-  const lat = numberOrNull(bias?.lat);
-  const lng = numberOrNull(bias?.lng);
-  if (lat === null || lng === null) return;
-  const bounds = boundsAround(lat, lng, Math.max(500, Number(bias.radiusMeters) || 25_000));
-  params.set('viewbox', `${bounds.west},${bounds.north},${bounds.east},${bounds.south}`);
-}
-
-function osmLookupId(id) {
-  const match = /^osm:(node|way|relation|n|w|r):(\d+)$/i.exec(String(id || ''));
-  if (!match) return '';
-  const type = { node: 'N', n: 'N', way: 'W', w: 'W', relation: 'R', r: 'R' }[match[1].toLowerCase()];
-  return `${type}${match[2]}`;
-}
-
 function assertCoordinates(lat, lng) {
   const parsedLat = numberOrNull(lat);
   const parsedLng = numberOrNull(lng);
@@ -170,96 +121,69 @@ function extractFunctionPayload(data) {
   return data?.data ?? data;
 }
 
-export function createPlacesClient({
-  supabaseClient = supabase,
-  fetchImpl = globalThis.fetch?.bind(globalThis),
-  functionName = DEFAULT_FUNCTION_NAME,
-  nominatimUrl = DEFAULT_NOMINATIM_URL
-} = {}) {
-  if (typeof fetchImpl !== 'function') throw new TypeError('A fetch implementation is required.');
-  const nominatimBase = String(nominatimUrl).replace(/\/$/, '');
+export class PlaceSearchError extends Error {
+  constructor(code, message = '') {
+    super(message || code);
+    this.name = 'PlaceSearchError';
+    this.code = code;
+  }
+}
 
+const SEARCH_MESSAGES = Object.freeze({
+  signed_out: 'Yer aramak için hesabınla giriş yap. Durağı elle de yazabilirsin.',
+  unavailable: 'Yer arama şu anda kullanılamıyor. Durağı elle yazabilirsin.',
+  quota: 'Bugünkü yer arama sınırına ulaşıldı. Durağı elle yazabilirsin.'
+});
+
+export function placeSearchMessage(error) {
+  const code = typeof error === 'string' ? error : error?.code;
+  return SEARCH_MESSAGES[code] || 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.';
+}
+
+function searchErrorFor(error) {
+  if (error instanceof PlaceSearchError) return error;
+  const status = Number(error?.context?.status);
+  const code = status === 401 ? 'signed_out' : status === 429 ? 'quota' : status === 503 ? 'unavailable' : 'failed';
+  return new PlaceSearchError(code, text(error?.message));
+}
+
+export function createPlacesClient({ supabaseClient = supabase, functionName = DEFAULT_FUNCTION_NAME } = {}) {
   async function invoke(action, body, signal) {
     throwIfAborted(signal);
-    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-    if (sessionError || !sessionData?.session?.access_token) throw new Error('Authenticated place search is unavailable.');
+    let session = null;
+    try { session = (await supabaseClient.auth.getSession())?.data?.session; } catch { /* treated as signed out */ }
+    if (!session?.access_token) throw new PlaceSearchError('signed_out');
     throwIfAborted(signal);
-    const { data, error } = await supabaseClient.functions.invoke(functionName, {
-      body: { action, ...body },
-      headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
-      signal
-    });
-    if (error) throw error;
-    return extractFunctionPayload(data);
-  }
-
-  async function osmAutocomplete(query, { limit, locationBias, signal }) {
-    const params = new URLSearchParams({
-      format: 'jsonv2',
-      q: query,
-      addressdetails: '1',
-      namedetails: '1',
-      limit: String(limit)
-    });
-    addLocationBias(params, locationBias);
-    return normalizeList(await fetchJson(fetchImpl, `${nominatimBase}/search?${params}`, signal), 'osm');
+    try {
+      const { data, error } = await supabaseClient.functions.invoke(functionName, {
+        body: { action, ...body },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        signal
+      });
+      if (error) throw error;
+      return extractFunctionPayload(data);
+    } catch (error) {
+      if (isAbortError(error, signal)) throw error;
+      throw searchErrorFor(error);
+    }
   }
 
   async function autocomplete(query, { limit = DEFAULT_LIMIT, locationBias, signal } = {}) {
     const cleanQuery = text(query);
     if (cleanQuery.length < MIN_QUERY_LENGTH) return [];
     const safeLimit = Math.max(1, Math.min(20, Math.round(Number(limit) || DEFAULT_LIMIT)));
-    try {
-      const data = await invoke('autocomplete', { query: cleanQuery, limit: safeLimit, locationBias }, signal);
-      return normalizeList(data, 'google').slice(0, safeLimit);
-    } catch (error) {
-      if (isAbortError(error, signal)) throw error;
-      return osmAutocomplete(cleanQuery, { limit: safeLimit, locationBias, signal });
-    }
+    const data = await invoke('autocomplete', { query: cleanQuery, limit: safeLimit, locationBias }, signal);
+    return normalizeList(data, 'google').slice(0, safeLimit);
   }
 
-  async function osmDetails(placeOrId, { query, signal }) {
-    const place = typeof placeOrId === 'object' ? placeOrId : null;
-    const lookupId = osmLookupId(place?.id || placeOrId);
-    if (lookupId) {
-      const params = new URLSearchParams({ format: 'jsonv2', osm_ids: lookupId, addressdetails: '1', namedetails: '1' });
-      const results = normalizeList(await fetchJson(fetchImpl, `${nominatimBase}/lookup?${params}`, signal), 'osm');
-      if (results[0]) return results[0];
-    }
-    const fallbackQuery = text(query || place?.name || place?.address);
-    if (fallbackQuery.length < MIN_QUERY_LENGTH) throw new Error('Place details are unavailable without a searchable name.');
-    const results = await osmAutocomplete(fallbackQuery, { limit: 1, locationBias: place, signal });
-    if (!results[0]) throw new Error('Place details were not found.');
-    return results[0];
-  }
-
-  async function details(placeOrId, { query, signal } = {}) {
+  async function details(placeOrId, { signal } = {}) {
     const id = text(typeof placeOrId === 'object' ? placeOrId?.id : placeOrId);
     if (!id) throw new TypeError('A place id is required.');
-    if (id.startsWith('osm:')) return osmDetails(placeOrId, { query, signal });
-    try {
-      const data = await invoke('details', { placeId: id }, signal);
-      const result = normalizePlace(data?.place || data?.result || data, 'google');
-      if (!result) throw new Error('The place provider returned invalid details.');
-      return result;
-    } catch (error) {
-      if (isAbortError(error, signal)) throw error;
-      return osmDetails(placeOrId, { query, signal });
-    }
-  }
-
-  async function osmNearby({ lat, lng, category, radiusMeters, limit, signal }) {
-    const bounds = boundsAround(lat, lng, radiusMeters);
-    const params = new URLSearchParams({
-      format: 'jsonv2',
-      q: NEARBY_CATEGORIES[category].osmQuery,
-      addressdetails: '1',
-      namedetails: '1',
-      bounded: '1',
-      viewbox: `${bounds.west},${bounds.north},${bounds.east},${bounds.south}`,
-      limit: String(limit)
-    });
-    return normalizeList(await fetchJson(fetchImpl, `${nominatimBase}/search?${params}`, signal), 'osm');
+    if (id.startsWith('osm:')) throw new PlaceSearchError('unavailable');
+    const data = await invoke('details', { placeId: id }, signal);
+    const result = normalizePlace(data?.place || data?.result || data, 'google');
+    if (!result) throw new PlaceSearchError('failed', 'The place provider returned invalid details.');
+    return result;
   }
 
   async function nearby({ lat, lng, category, radiusMeters = 1_500, limit = DEFAULT_LIMIT, signal } = {}) {
@@ -269,14 +193,8 @@ export function createPlacesClient({
     }
     const safeRadius = Math.max(100, Math.min(10_000, Math.round(Number(radiusMeters) || 1_500)));
     const safeLimit = Math.max(1, Math.min(20, Math.round(Number(limit) || DEFAULT_LIMIT)));
-    const request = { ...coordinates, category, radiusMeters: safeRadius, limit: safeLimit };
-    try {
-      const data = await invoke('nearby', request, signal);
-      return normalizeList(data, 'google').slice(0, safeLimit);
-    } catch (error) {
-      if (isAbortError(error, signal)) throw error;
-      return osmNearby({ ...request, signal });
-    }
+    const data = await invoke('nearby', { ...coordinates, category, radiusMeters: safeRadius, limit: safeLimit }, signal);
+    return normalizeList(data, 'google').slice(0, safeLimit);
   }
 
   return Object.freeze({ autocomplete, details, nearby });

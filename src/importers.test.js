@@ -12,3 +12,8 @@ test('parses Google Takeout GeoJSON saved places and removes duplicates', () => 
 test('rejects entries without a name or coordinates', () => {
   assert.deepEqual(parseGoogleSavedPlaces([{ name: 'No location' }, { latitude: 1, longitude: 2 }]), []);
 });
+
+test('saved places without a Google URL are tagged as saved, not as a map provider', () => {
+  const [place] = parseGoogleSavedPlaces([{ name: 'Café', latitude: 1, longitude: 2 }]);
+  assert.equal(place.provider, 'saved');
+});
