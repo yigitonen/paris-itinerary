@@ -19,6 +19,7 @@ import { createPlacesClient, debounce, NEARBY_CATEGORIES } from './src/places.js
 import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
 import { renderRouteMap } from './src/map.js';
 import { ensureProfile, loadConnections, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
+import { createPostSignInGuard, createUserTracker, PENDING_PLAN_KEY, registerServiceWorker, takePendingPlan } from './src/lifecycle.js';
 import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
 import { recapShareOptions } from './src/sharing.js';
@@ -280,10 +281,14 @@ async function renderFriends({ refresh = true } = {}) {
   if (refresh) {
     root.innerHTML = `<div class="friends-loading"><i data-lucide="loader-circle"></i>Arkadaşların yükleniyor…</div>`;
     icons();
+    const sessionAtStart = state.session;
     try {
-      await ensureProfile(state.session);
-      state.connections = await loadConnections(state.session);
+      await ensureProfile(sessionAtStart);
+      const connections = await loadConnections(sessionAtStart);
+      if (state.session?.user?.id !== sessionAtStart.user.id) return;
+      state.connections = connections;
     } catch (error) {
+      if (state.session?.user?.id !== sessionAtStart.user.id) return;
       console.error(error);
       root.innerHTML = `<div class="empty-state"><i data-lucide="wifi-off"></i><h2>Arkadaşlar yüklenemedi.</h2><p>Bağlantını kontrol edip yeniden dene.</p><button class="secondary-button" data-action="reload-friends">Yeniden dene</button></div>`;
       icons();
@@ -383,8 +388,11 @@ function renderAll() {
 
 async function refreshTrips() {
   setSync('Senkronlanıyor', 'syncing');
+  const userId = state.session?.user?.id ?? null;
   try {
-    state.trips = await loadTrips(state.session);
+    const trips = await loadTrips(state.session);
+    if ((state.session?.user?.id ?? null) !== userId) return;
+    state.trips = trips;
     if (!state.activeTripId || !state.trips.some((trip) => trip.id === state.activeTripId)) state.activeTripId = state.trips[0]?.id || null;
     const pending = pendingTripSyncCount(state.session);
     setSync(state.session
@@ -392,6 +400,7 @@ async function refreshTrips() {
       : 'Bu cihazda', pending ? 'syncing' : 'ready');
     renderAll();
   } catch (error) {
+    if ((state.session?.user?.id ?? null) !== userId) return;
     console.error(error);
     setSync('Bağlantı gerekli', 'error');
     toast(error.message || 'Seyahatlerin yüklenemedi. Bağlantını kontrol et.', 'error');
@@ -400,8 +409,10 @@ async function refreshTrips() {
 
 async function persistTrip(trip, successMessage) {
   setSync('Kaydediliyor', 'syncing');
+  const userId = state.session?.user?.id ?? null;
   try {
     const result = await saveTrip(trip, state.session, state.trips);
+    if ((state.session?.user?.id ?? null) !== userId) return result.trip;
     state.trips = result.trips;
     state.activeTripId = result.trip.id;
     setSync(result.pendingSync ? 'Çevrimdışı kaydedildi' : state.session ? 'Bulutta güncel' : 'Bu cihazda', result.pendingSync ? 'syncing' : 'ready');
@@ -728,9 +739,9 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'sign-out') {
     await supabase.auth.signOut();
-    state.session = null;
+    sessionStorage.removeItem(PENDING_PLAN_KEY);
+    await applySession(null);
     showRoute('home');
-    await refreshTrips();
     toast('Çıkış yapıldı. Misafir modundasın.');
   }
   if (control.dataset.deleteExpense) {
@@ -940,37 +951,61 @@ window.addEventListener('offline', setOnlineState);
 window.addEventListener('roamly:network', (event) => event.detail?.connected ? handleOnline() : setOnlineState());
 window.addEventListener('roamly:auth-callback', async (event) => {
   try {
-    const { error } = await completePkceCallback(event.detail?.url);
+    const { data, error } = await completePkceCallback(event.detail?.url);
     if (error) throw error;
+    if (data?.session) await applySession(data.session, { announce: true });
   } catch (error) {
     console.error(error);
     toast('Giriş tamamlanamadı. Lütfen yeniden dene.', 'error');
   }
 });
 setOnlineState();
+registerServiceWorker({ nav: navigator, doc: document, win: window, location });
+
+const userTracker = createUserTracker();
+const postSignIn = createPostSignInGuard();
+
+function resetUserState() {
+  Object.assign(state, { trips: [], activeTripId: null, activeDayId: null, nearbyResults: [], nearbyCategory: '', placeSuggestions: [], connections: [], profileResults: [] });
+}
+
+async function runPostSignIn(session, { announce }) {
+  const userId = session.user.id;
+  const stillCurrent = () => state.session?.user?.id === userId;
+  let migrated = [];
+  try { migrated = await migrateGuestTrips(session); } catch (error) { console.warn('Guest trip migration will retry', error); }
+  if (!stillCurrent()) return;
+  await handleOnline();
+  if (!stillCurrent()) return;
+  if (announce) toast(migrated.length ? `Hesabın hazır. ${migrated.length} seyahat hesabına taşındı.` : 'Hesabın hazır. Bulut senkronu açıldı.');
+  const plan = takePendingPlan(sessionStorage);
+  if (plan) await runPlanner(plan);
+}
+
+async function applySession(session, { announce = false } = {}) {
+  state.session = session || null;
+  const { changed, previousUserId, userId } = userTracker.change(session);
+  if (!changed) return;
+  resetUserState();
+  renderAll();
+  if (!userId) {
+    postSignIn.reset();
+    await refreshTrips();
+  } else {
+    if ($('#authModal')?.classList.contains('open')) closeModal($('#authModal'));
+    if (state.route === 'trip') showRoute('trips');
+    await postSignIn.run(userId, () => runPostSignIn(session, { announce: announce && previousUserId === null }));
+  }
+  if (state.route === 'friends') void renderFriends();
+}
 
 async function initialize() {
   icons();
-  state.session = await getSession();
-  if (state.session && navigator.onLine) await flushPendingTripChanges(state.session).catch((error) => console.warn('Pending sync will retry', error));
-  await refreshTrips();
-  if (state.session) {
-    const migrated = await migrateGuestTrips(state.session).catch(() => []);
-    if (migrated.length) await refreshTrips();
-    const pending = sessionStorage.getItem('roamly-pending-plan');
-    if (pending) {
-      sessionStorage.removeItem('roamly-pending-plan');
-      await runPlanner(JSON.parse(pending));
-    }
-  }
-  supabase.auth.onAuthStateChange(async (_event, session) => {
-    const wasSignedOut = !state.session;
-    state.session = session;
-    closeModal();
-    await refreshTrips();
-    if (session && wasSignedOut) toast('Hesabın hazır. Bulut senkronu açıldı.');
+  // Supabase holds its auth lock while this callback runs, so defer the work instead of awaiting Supabase inside it.
+  supabase.auth.onAuthStateChange((_event, session) => {
+    setTimeout(() => { applySession(session, { announce: true }).catch(console.error); }, 0);
   });
-  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  await applySession(await getSession());
 }
 
 initialize().catch((error) => {
