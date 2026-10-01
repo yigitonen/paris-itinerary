@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.112.0";
 import { contentText, mapsSources, matchPlaceSource } from "./gemini.js";
 import { targetStopsForPace, validatePlanShape } from "./plan-validation.js";
 import { optimizeDayStops } from "./route.js";
+import { denialResponse, failureReasonFor, quotaPolicy, reservationParams } from "../_shared/quota.js";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 const API_ROOT = "https://generativelanguage.googleapis.com/v1beta";
@@ -31,10 +32,10 @@ function corsHeaders(request: Request) {
   return headers;
 }
 
-function json(body: unknown, request: Request, status = 200) {
+function json(body: unknown, request: Request, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders(request), "Content-Type": "application/json; charset=utf-8" }
+    headers: { ...corsHeaders(request), ...extraHeaders, "Content-Type": "application/json; charset=utf-8" }
   });
 }
 
@@ -240,28 +241,50 @@ Deno.serve(async (request: Request) => {
     const input = validateInput(await request.json());
     const model = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
 
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count, error: countError } = await supabase.from("ai_plan_requests")
-      .select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", since);
-    if (countError) throw new RequestError("AI kullanım sınırı şu anda kontrol edilemiyor.", 503);
-    if ((count || 0) >= 3) throw new RequestError("Ücretsiz AI planı günlük sınırına ulaştın. 24 saat sonra yeniden deneyebilirsin.", 429);
+    // Reserve the quota slot atomically before any paid Gemini call. The RPC runs with
+    // the service role: clients have no access to the usage ledger.
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!serviceKey) return json({ error: "AI kullanım sınırı şu anda kontrol edilemiyor.", code: "quota_unavailable" }, request, 503);
+    const admin = createClient(Deno.env.get("SUPABASE_URL") || "", serviceKey, { auth: { persistSession: false } });
+    const { data: reservation, error: reserveError } = await admin.rpc("reserve_provider_usage",
+      reservationParams(user.id, "gemini_plan", "plan", quotaPolicy("gemini_plan", Deno.env.toObject())));
+    if (reserveError || !reservation) {
+      console.error("plan-trip quota reservation failed", reserveError?.message || "empty response");
+      return json({ error: "AI kullanım sınırı şu anda kontrol edilemiyor.", code: "quota_unavailable" }, request, 503);
+    }
+    if (!reservation.allowed) {
+      const denied = denialResponse("gemini_plan", { allowed: false, reason: reservation.reason, retryAfterSeconds: reservation.retry_after_seconds });
+      return json(denied.body, request, denied.status, denied.headers);
+    }
+    const reservationId = String(reservation.reservation_id);
+    // Every reservation is settled exactly once. Only a complete, validated itinerary
+    // counts as a success; provider, timeout and formatting failures are recorded as failures.
+    const finish = async (succeeded: boolean, failureReason?: string) => {
+      const { error: finishError } = await admin.rpc("finish_provider_usage", {
+        p_reservation_id: reservationId,
+        p_succeeded: succeeded,
+        p_failure_reason: failureReason ?? null
+      });
+      if (finishError) console.error("plan-trip usage could not be settled", finishError.message);
+    };
 
-    const generatePath = `/models/${encodeURIComponent(model)}:generateContent`;
-    const stopsPerDay = targetStopsForPace(input.pace);
-    const experienceStops = stopsPerDay - 3;
-    const mapsPrompt = `Create an English planning brief for a complete, optimized ${input.days}-day itinerary in ${input.destination}, starting ${input.startDate}. Traveler style: ${input.style}. Pace: ${input.pace}. Special note: ${input.note || "none"}.
+    try {
+      const generatePath = `/models/${encodeURIComponent(model)}:generateContent`;
+      const stopsPerDay = targetStopsForPace(input.pace);
+      const experienceStops = stopsPerDay - 3;
+      const mapsPrompt = `Create an English planning brief for a complete, optimized ${input.days}-day itinerary in ${input.destination}, starting ${input.startDate}. Traveler style: ${input.style}. Pace: ${input.pace}. Special note: ${input.note || "none"}.
 
 Use Google Maps grounding for every named venue. Select exactly ${stopsPerDay} unique venues per day: exactly one Breakfast venue, one Lunch venue, one Dinner venue, and exactly ${experienceStops} cultural, landmark, neighborhood, nature, shopping, cafe/rest, or local-favorite experiences. Never repeat a venue anywhere in the trip. Group each day into one or two adjacent neighborhoods, choosing meal venues close to that day's route rather than near a distant hotel. Minimize backtracking and city crisscrossing. Preserve realistic breakfast, morning, lunch/rest, afternoon, and dinner timing. Include essential museums and cultural landmarks that genuinely matter, but no more than one major museum per day unless requested. For every venue, state its stable meal role as Breakfast, Lunch, Dinner, or None; exact Google Maps place name; neighborhood; sensible duration; why it belongs; and only recurring traveler advice, common complaints, or reservation caveats supported by Maps data. Clearly distinguish place facts from recurring opinions. Include latitude and longitude only when Maps explicitly supplies them. Never invent coordinates, a review, or quote a reviewer. Do not guarantee opening hours, tickets, prices, or availability. Return a concise day-by-day planning brief, not JSON.`;
-    const mapsResponse = await geminiRequest(generatePath, apiKey, {
-      contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
-      tools: [{ googleMaps: {} }]
-    });
-    const mapsText = contentText(mapsResponse);
-    const mapSources = mapsSources(mapsResponse);
-    if (mapsText.length < 80 || !mapSources.length) throw new Error("Google Maps could not ground the route");
+      const mapsResponse = await geminiRequest(generatePath, apiKey, {
+        contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
+        tools: [{ googleMaps: {} }]
+      });
+      const mapsText = contentText(mapsResponse);
+      const mapSources = mapsSources(mapsResponse);
+      if (mapsText.length < 80 || !mapSources.length) throw new Error("Google Maps could not ground the route");
 
-    const sourceNames = mapSources.map((source) => `- ${source.title}`).join("\n");
-    const finalPrompt = `Turn the grounded material below into Roamly's final itinerary JSON. All traveler-facing content must be natural Turkish. Preserve the exact day and stop order from the Google Maps planning brief because that order is already geographically optimized.
+      const sourceNames = mapSources.map((source) => `- ${source.title}`).join("\n");
+      const finalPrompt = `Turn the grounded material below into Roamly's final itinerary JSON. All traveler-facing content must be natural Turkish. Preserve the exact day and stop order from the Google Maps planning brief because that order is already geographically optimized.
 
 Trip: ${input.destination}, ${input.startDate}, exactly ${input.days} days
 Style: ${input.style}
@@ -287,49 +310,49 @@ ${sourceNames}
 
 GOOGLE MAPS GROUNDED AND OPTIMIZED BRIEF:
 ${mapsText.slice(0, 32_000)}`;
-    const finalResponse = await geminiRequest(generatePath, apiKey, {
-      contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
-      generationConfig: {
-        temperature: 0.15,
-        responseMimeType: "application/json",
-        responseSchema: finalSchema(input.days, stopsPerDay)
-      }
-    });
-    const finalText = finalResponse?.candidates?.[0]?.content?.parts?.map((part: Record<string, unknown>) => part.text || "").join("") || "";
-    const trip = normalizeTrip(parseCompletion(finalText), input, mapSources);
-    const stops = trip.days.flatMap((day) => day.stops);
-    const verifiedCount = stops.filter((stop) => stop.verified).length;
-    const coordinateCount = stops.filter((stop) => stop.lat !== null && stop.lng !== null).length;
-    const optimizedDayCount = trip.days.filter((day) => day.stops.length >= 2 && day.stops.every((stop) => stop.lat !== null && stop.lng !== null)).length;
-    const researchSources = mapSources.slice(0, 12);
-
-    // Only a complete, validated itinerary consumes one of the user's three
-    // successful daily plans. Provider, timeout and formatting failures do not.
-    const { error: claimError } = await supabase.from("ai_plan_requests").insert({ user_id: user.id, request_bucket: Math.floor(Date.now() / 60_000) });
-    if (claimError?.code === "23505") throw new RequestError("Yeni bir AI planı oluşturmadan önce bir dakika bekle.", 429);
-    if (claimError) throw new RequestError("AI kullanım hakkı ayrılamadı. Lütfen yeniden dene.", 503);
-
-    return json({
-      trip: {
-        ...trip,
-        researchSummary: "Önemli müzeler, yerel öneriler ve tekrar eden gezgin deneyimleri güncel Google Maps yer verileriyle birlikte değerlendirildi.",
-        researchSources,
-        plannerMeta: {
-          provider: model,
-          researched: true,
-          verifiedPlaces: verifiedCount,
-          totalPlaces: stops.length,
-          stopsPerDay,
-          mealsPerDay: 3,
-          routeOptimized: optimizedDayCount > 0,
-          routeSequenced: true,
-          routeMethod: optimizedDayCount > 0 ? "Google Maps grounding plus coordinate ordering" : "Google Maps grounded neighborhood sequencing",
-          coordinatePlaces: coordinateCount,
-          coordinateOptimizedDays: optimizedDayCount,
-          timeSensitiveDetailsNeedRecheck: true
+      const finalResponse = await geminiRequest(generatePath, apiKey, {
+        contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+        generationConfig: {
+          temperature: 0.15,
+          responseMimeType: "application/json",
+          responseSchema: finalSchema(input.days, stopsPerDay)
         }
-      }
-    }, request);
+      });
+      const finalText = finalResponse?.candidates?.[0]?.content?.parts?.map((part: Record<string, unknown>) => part.text || "").join("") || "";
+      const trip = normalizeTrip(parseCompletion(finalText), input, mapSources);
+      const stops = trip.days.flatMap((day) => day.stops);
+      const verifiedCount = stops.filter((stop) => stop.verified).length;
+      const coordinateCount = stops.filter((stop) => stop.lat !== null && stop.lng !== null).length;
+      const optimizedDayCount = trip.days.filter((day) => day.stops.length >= 2 && day.stops.every((stop) => stop.lat !== null && stop.lng !== null)).length;
+      const researchSources = mapSources.slice(0, 12);
+
+      const body = {
+        trip: {
+          ...trip,
+          researchSummary: "Önemli müzeler, yerel öneriler ve tekrar eden gezgin deneyimleri güncel Google Maps yer verileriyle birlikte değerlendirildi.",
+          researchSources,
+          plannerMeta: {
+            provider: model,
+            researched: true,
+            verifiedPlaces: verifiedCount,
+            totalPlaces: stops.length,
+            stopsPerDay,
+            mealsPerDay: 3,
+            routeOptimized: optimizedDayCount > 0,
+            routeSequenced: true,
+            routeMethod: optimizedDayCount > 0 ? "Google Maps grounding plus coordinate ordering" : "Google Maps grounded neighborhood sequencing",
+            coordinatePlaces: coordinateCount,
+            coordinateOptimizedDays: optimizedDayCount,
+            timeSensitiveDetailsNeedRecheck: true
+          }
+        }
+      };
+      await finish(true);
+      return json(body, request);
+    } catch (providerError) {
+      await finish(false, failureReasonFor(providerError));
+      throw providerError;
+    }
   } catch (error) {
     console.error("plan-trip failed", error instanceof Error ? error.message : error);
     const status = error instanceof GeminiError || error instanceof RequestError ? error.status : 500;

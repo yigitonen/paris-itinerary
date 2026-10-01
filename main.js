@@ -475,7 +475,7 @@ async function runPlanner(input) {
   } catch (error) {
     console.error(error);
     const message = String(error?.message || '');
-    const userMessage = !navigator.onLine || /failed to fetch|network|functionsfetcherror/i.test(message)
+    const userMessage = error?.quota ? error.message : !navigator.onLine || /failed to fetch|network|functionsfetcherror/i.test(message)
       ? 'AI planlama için bağlantı gerekiyor. Boş planla devam edebilir veya bağlantı gelince yeniden deneyebilirsin.'
       : /quota|kota|429|resource exhausted/i.test(message)
         ? 'Bugünkü AI planlama sınırına ulaşıldı. Bir süre sonra yeniden dene veya boş planla devam et.'
