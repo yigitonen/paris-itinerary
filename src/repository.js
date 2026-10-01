@@ -68,11 +68,8 @@ export async function completePkceCallback(callbackUrl) {
 const readGuestTrips = () => {
   try {
     const parsed = JSON.parse(localStorage.getItem(GUEST_STORAGE_KEY) || 'null');
-    if (Array.isArray(parsed) && parsed.length) {
-      const repaired = parsed.map((trip) => trip.id === 'demo-rome' ? createDemoTrip() : trip);
-      writeGuestTrips(repaired);
-      return repaired;
-    }
+    // A stored list is the user's data, including an edited example or an empty list.
+    if (Array.isArray(parsed)) return parsed;
   } catch (error) {
     console.warn('Guest trips could not be read', error);
   }
