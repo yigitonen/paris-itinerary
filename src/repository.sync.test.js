@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteTrip, flushPendingTripChanges, loadTrips, pendingTripSyncCount, saveTrip, supabase } from './repository.js';
-import { readCloudCache } from './offline.js';
+import { deleteTrip, failedTripSyncCount, flushPendingTripChanges, loadTrips, migrateGuestTrips, pendingTripSyncCount, saveTrip, supabase } from './repository.js';
+import { createDemoTrip } from './data.js';
+import { GUEST_STORAGE_KEY } from './config.js';
+import { readCloudCache, readSyncQueue } from './offline.js';
 
 const session = { user: { id: 'sync-user' } };
 const trip = (id, title) => ({ id, title, destination: 'Lisbon', startDate: '2026-09-01', endDate: '2026-09-03', days: [], expenses: [], journals: [] });
@@ -10,6 +12,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 function fakeCloud() {
   const rows = new Map();
   const started = [];
+  const failures = new Map();
   let gate = null;
   const request = (label, apply) => ({
     then(resolve, reject) {
@@ -21,18 +24,43 @@ function fakeCloud() {
     rows.set(row.id, { ...row, created_at: rows.get(row.id)?.created_at || '2026-08-01T00:00:00.000Z', updated_at: new Date().toISOString() });
     return rows.get(row.id);
   };
+  const failureFor = (ids) => {
+    for (const id of [...ids, '*']) {
+      const failure = failures.get(id);
+      if (!failure) continue;
+      if (failure.times !== Infinity) { failure.times -= 1; if (failure.times <= 0) failures.delete(id); }
+      return failure;
+    }
+    return null;
+  };
+  const apply = (ids, run) => () => {
+    const failure = failureFor(ids);
+    if (failure) return { data: null, error: failure.error, status: failure.status ?? 400 };
+    return run();
+  };
   const table = {
-    select: () => ({ order: () => request('select', () => ({ data: [...rows.values()], error: null })) }),
-    upsert: (row) => ({
-      ...request(`upsert:${row.id}`, () => { store(row); return { error: null }; }),
-      select: () => ({ single: () => request(`upsert:${row.id}`, () => ({ data: store(row), error: null })) })
-    }),
-    delete: () => ({ eq: (_column, id) => request(`delete:${id}`, () => { rows.delete(id); return { error: null }; }) })
+    select: () => ({ order: () => request('select', () => ({ data: [...rows.values()], error: null, status: 200 })) }),
+    upsert: (input) => {
+      const list = Array.isArray(input) ? input : [input];
+      const ids = list.map((row) => row.id);
+      const label = `upsert:${ids.join(',')}`;
+      const selected = (single) => request(label, apply(ids, () => {
+        const saved = list.map(store);
+        return { data: single ? saved[0] : saved, error: null, status: 200 };
+      }));
+      return {
+        ...request(label, apply(ids, () => { list.forEach(store); return { error: null, status: 201 }; })),
+        select: () => ({ ...selected(false), single: () => selected(true) })
+      };
+    },
+    delete: () => ({ eq: (_column, id) => request(`delete:${id}`, apply([id], () => { rows.delete(id); return { error: null, status: 204 }; })) })
   };
   return {
     rows,
     started,
     from: () => table,
+    fail(tripId, { error, status = 400, times = Infinity } = {}) { failures.set(tripId, { error, status, times }); },
+    heal(tripId) { failures.delete(tripId); },
     pause() {
       let release;
       gate = new Promise((resolve) => { release = resolve; });
@@ -153,4 +181,164 @@ test('an offline edit made while an online save waits in line is kept', withClou
 
   assert.equal(cloud.rows.get('trip-a').title, 'Offline, newer');
   assert.equal(pendingTripSyncCount(session), 0);
+}));
+
+const rejection = { message: 'new row violates check constraint', code: '23514' };
+const cloudRow = (id, title) => ({ id, owner_id: 'sync-user', title, destination: 'Lisbon', start_date: '2026-09-01', end_date: '2026-09-03', status: 'planning', style: 'Dengeli', pace: 'Rahat', cover_key: 'default', budget_total: 0, currency: 'EUR', plan: {}, created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-02T00:00:00.000Z' });
+
+async function queueOffline(setOnline, ...trips) {
+  setOnline(false);
+  let list = [];
+  for (const item of trips) list = (await saveTrip(item, session, list)).trips;
+  setOnline(true);
+  return list;
+}
+
+test('a change the server rejects moves aside and does not block later changes', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'Rejected'), trip('trip-b', 'Fine'));
+  cloud.fail('trip-a', { error: rejection, status: 400 });
+
+  assert.equal(await flushPendingTripChanges(session), 1);
+  assert.deepEqual([...cloud.rows.keys()], ['trip-b']);
+  assert.equal(pendingTripSyncCount(session), 0);
+  assert.equal(failedTripSyncCount(session), 1);
+}));
+
+test('a rejected change stays visible after a cloud refresh', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'Offline title'), trip('trip-b', 'Fine'));
+  cloud.fail('trip-a', { error: rejection, status: 400 });
+  await flushPendingTripChanges(session);
+
+  const loaded = await loadTrips(session);
+  assert.deepEqual(loaded.map(({ id, title }) => [id, title]).sort(), [['trip-a', 'Offline title'], ['trip-b', 'Fine']]);
+}));
+
+test('saving a trip again clears its rejected change', withCloud(async ({ cloud, setOnline }) => {
+  const list = await queueOffline(setOnline, trip('trip-a', 'Rejected once'));
+  cloud.fail('trip-a', { error: rejection, status: 400, times: 1 });
+  await flushPendingTripChanges(session);
+  assert.equal(failedTripSyncCount(session), 1);
+
+  await saveTrip(trip('trip-a', 'Fixed'), session, list);
+  assert.equal(failedTripSyncCount(session), 0);
+  assert.equal(cloud.rows.get('trip-a').title, 'Fixed');
+}));
+
+test('deleting a trip clears its rejected change', withCloud(async ({ cloud, setOnline }) => {
+  const list = await queueOffline(setOnline, trip('trip-a', 'Rejected'));
+  cloud.fail('trip-a', { error: rejection, status: 400, times: 1 });
+  await flushPendingTripChanges(session);
+  assert.equal(failedTripSyncCount(session), 1);
+
+  await deleteTrip('trip-a', session, list);
+  assert.equal(failedTripSyncCount(session), 0);
+}));
+
+test('a server outage keeps the change queued', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'A'));
+  cloud.fail('trip-a', { error: { message: 'upstream unavailable' }, status: 503 });
+
+  await assert.rejects(flushPendingTripChanges(session));
+  assert.equal(pendingTripSyncCount(session), 1);
+  assert.equal(failedTripSyncCount(session), 0);
+  assert.equal(readSyncQueue(session.user.id)[0].attempts, 1);
+}));
+
+test('an expired session keeps the change queued', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'A'));
+  cloud.fail('trip-a', { error: { message: 'JWT expired', code: 'PGRST301' }, status: 401 });
+
+  await assert.rejects(flushPendingTripChanges(session));
+  assert.equal(pendingTripSyncCount(session), 1);
+  assert.equal(failedTripSyncCount(session), 0);
+}));
+
+test('a change that keeps failing is moved aside after five attempts', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'A'));
+  cloud.fail('trip-a', { error: { message: 'upstream unavailable' }, status: 503 });
+
+  for (let attempt = 1; attempt < 5; attempt += 1) {
+    await assert.rejects(flushPendingTripChanges(session));
+    assert.equal(pendingTripSyncCount(session), 1);
+  }
+  assert.equal(await flushPendingTripChanges(session), 0);
+  assert.equal(pendingTripSyncCount(session), 0);
+  assert.equal(failedTripSyncCount(session), 1);
+}));
+
+test('network failures never count as attempts', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'A'));
+  cloud.fail('trip-a', { error: { message: 'Failed to fetch' }, status: 0 });
+
+  for (let attempt = 0; attempt < 6; attempt += 1) await assert.rejects(flushPendingTripChanges(session));
+  assert.equal(pendingTripSyncCount(session), 1);
+  assert.equal(failedTripSyncCount(session), 0);
+  assert.equal(readSyncQueue(session.user.id)[0].attempts, undefined);
+}));
+
+test('two devices: last write to reach the cloud wins per trip', withCloud(async ({ cloud, setOnline }) => {
+  await queueOffline(setOnline, trip('trip-a', 'Laptop'));
+  cloud.rows.set('trip-a', cloudRow('trip-a', 'Phone'));
+  cloud.rows.set('trip-b', cloudRow('trip-b', 'Phone only'));
+
+  await flushPendingTripChanges(session);
+  assert.equal(cloud.rows.get('trip-a').title, 'Laptop');
+  assert.equal(cloud.rows.get('trip-b').title, 'Phone only');
+
+  cloud.rows.set('trip-a', cloudRow('trip-a', 'Phone again'));
+  const loaded = await loadTrips(session);
+  assert.equal(loaded.find((item) => item.id === 'trip-a').title, 'Phone again');
+  assert.equal(loaded.find((item) => item.id === 'trip-b').title, 'Phone only');
+}));
+
+const storedGuestTrips = () => JSON.parse(localStorage.getItem(GUEST_STORAGE_KEY));
+
+test('an untouched example trip is not uploaded at sign-in', withCloud(async ({ cloud }) => {
+  await loadTrips(null);
+  assert.deepEqual(await migrateGuestTrips(session), []);
+  assert.equal(cloud.rows.size, 0);
+  assert.notEqual(localStorage.getItem(GUEST_STORAGE_KEY), null);
+}));
+
+test('an edited example trip is uploaded at sign-in', withCloud(async ({ cloud }) => {
+  const trips = await loadTrips(null);
+  await saveTrip({ ...trips[0], title: 'Roma, benim planım' }, null, trips);
+
+  const migrated = await migrateGuestTrips(session);
+  const [row] = [...cloud.rows.values()];
+  assert.equal(cloud.rows.size, 1);
+  assert.match(row.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  assert.equal(row.title, 'Roma, benim planım');
+  assert.equal(row.plan.source, 'manual');
+  assert.equal(migrated.length, 1);
+  assert.equal(localStorage.getItem(GUEST_STORAGE_KEY), null);
+}));
+
+test('an example edited before this update is uploaded', withCloud(async ({ cloud }) => {
+  const demo = createDemoTrip();
+  localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify([{ ...demo, title: 'Eski düzenleme', updatedAt: new Date(Date.parse(demo.createdAt) + 86400000).toISOString() }]));
+
+  await migrateGuestTrips(session);
+  assert.deepEqual([...cloud.rows.values()].map((row) => row.title), ['Eski düzenleme']);
+}));
+
+test('a guest trip with a non-UUID id is uploaded under a new id', withCloud(async ({ cloud }) => {
+  localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify([trip('guest-1', 'Elle eklenen')]));
+  await migrateGuestTrips(session);
+  assert.equal(cloud.rows.has('guest-1'), false);
+  assert.deepEqual([...cloud.rows.values()].map((row) => row.title), ['Elle eklenen']);
+}));
+
+test('a retried migration does not duplicate the example', withCloud(async ({ cloud }) => {
+  const trips = await loadTrips(null);
+  await saveTrip({ ...trips[0], title: 'Roma, benim planım' }, null, trips);
+  cloud.fail('*', { error: rejection, status: 400, times: 1 });
+
+  await assert.rejects(migrateGuestTrips(session));
+  const [{ id }] = storedGuestTrips();
+  assert.equal(cloud.rows.size, 0);
+
+  await migrateGuestTrips(session);
+  assert.deepEqual([...cloud.rows.keys()], [id]);
+  assert.equal(localStorage.getItem(GUEST_STORAGE_KEY), null);
 }));
