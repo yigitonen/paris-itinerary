@@ -16,6 +16,6 @@ export function parseGoogleSavedPlaces(value) {
     const key = `${name.toLocaleLowerCase('tr-TR')}|${lat.toFixed(5)}|${lng.toFixed(5)}`;
     if (seen.has(key)) return null;
     seen.add(key);
-    return { id: crypto.randomUUID(), name, address, lat, lng, provider: googleMapsUrl ? 'google' : 'osm', googleMapsUrl, primaryType: 'saved_place' };
+    return { id: crypto.randomUUID(), name, address, lat, lng, provider: googleMapsUrl ? 'google' : 'saved', googleMapsUrl, primaryType: 'saved_place' };
   }).filter(Boolean).slice(0, 500);
 }

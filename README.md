@@ -12,9 +12,10 @@ one interface and save to the same trip.
   trips remain editable offline and queued changes synchronize after reconnection.
 - AI planning runs only through the protected `plan-trip` Supabase Edge
   Function. The Gemini key never enters the browser or native bundle.
-- Google-first place autocomplete, place details, and nearby discovery run
-  through the protected `places` Edge Function. If a Google Places key is not
-  configured, search falls back to OpenStreetMap without exposing a secret.
+- Place autocomplete, place details, and nearby discovery run only through the
+  protected `places` Edge Function and need a signed-in account. If a Google
+  Places key is not configured, search is unavailable and stops can still be
+  entered by hand.
 - Friends are real Supabase profiles and connection requests protected by
   row-level security; no fabricated social feed or sample counters are shown.
 - When AI is unavailable, Roamly says so and offers a blank editable plan. It
@@ -80,7 +81,8 @@ supabase functions deploy places
 ```
 
 Roamly caps Google Places traffic per signed-in user. The key is optional;
-without it, place search and nearby discovery continue through OpenStreetMap.
+without it, place search and nearby discovery are turned off and stops can
+still be entered by hand.
 
 Do not add provider keys to `src/config.js`, `.env` variables exposed by Vite,
 or either native project.
