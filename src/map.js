@@ -26,7 +26,7 @@ export function renderRouteMap(element, stops = []) {
     const point = [Number(stop.lat), Number(stop.lng)];
     L.marker(point, {
       icon: L.divIcon({ className: 'roamly-map-marker', html: `<span><b>${index + 1}</b></span>`, iconSize: [30, 30], iconAnchor: [15, 15] })
-    }).addTo(activeMap).bindPopup(`<strong>${String(stop.title || '').replace(/[<>&"]/g, '')}</strong><br>${stop.time || ''}`);
+    }).addTo(activeMap).bindPopup(`<strong>${String(stop.title || '').replace(/[<>&"]/g, '')}</strong><br>${String(stop.time || '').replace(/[<>&"]/g, '')}`);
     return point;
   });
   if (points.length > 1) L.polyline(points, { color: '#153c35', weight: 4, opacity: .8, dashArray: '8 8' }).addTo(activeMap);
