@@ -47,8 +47,13 @@ quotas and data-use terms. Use a key whose Google AI Studio project is on the
 Free Tier; a paid Prepay project stops serving requests when its credit balance
 reaches zero and does not automatically fall back to free usage.
 
-Roamly allows each signed-in user up to three AI plans in a rolling 24-hour
-window, with a one-minute cooldown, to protect the shared free allowance.
+Roamly allows each signed-in user three successful AI plans in a rolling 24-hour
+window, at most 10 attempts, one per minute and one at a time. Failed attempts
+do not use up the allowance. Limits are reserved atomically in the
+`provider_usage` table before Gemini is called. A shared daily budget of
+`AI_GLOBAL_DAILY_LIMIT` plans (default 200) protects the free allowance for
+everyone. Place search is limited the same way: 120 successful searches per
+user per 24 hours and `PLACES_GLOBAL_DAILY_LIMIT` per day (default 2000).
 
 The planner uses Google Maps grounding to research important museums, local
 advice and recurring traveler experience, select real venues, and organize each
