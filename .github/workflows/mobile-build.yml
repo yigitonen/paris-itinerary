@@ -9,6 +9,8 @@ on:
       - 'ios/**'
       - 'assets/**'
       - 'icons/**'
+      - 'src/**'
+      - 'supabase/functions/**'
       - '*.html'
       - '*.js'
       - '*.css'
@@ -35,6 +37,7 @@ jobs:
           java-version: 21
       - uses: android-actions/setup-android@v3
       - run: npm ci
+      - run: npm test
       - run: npm run mobile:sync
       - name: Build APK
         working-directory: android
@@ -55,6 +58,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run mobile:sync
       - name: Build for iOS Simulator
         run: >-

@@ -1,4 +1,5 @@
 import { parseNativeDestination } from './native-routing.js';
+import { recapShareOptions } from './src/sharing.js';
 
 const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
 
@@ -64,9 +65,7 @@ async function bootNative() {
     },
     async shareRecap({ title, text, url }) {
       await Share.share({
-        title: String(title || 'Roamly seyahat özeti'),
-        text: String(text || ''),
-        url: String(url || 'https://roamly-travel.yigitonen.chatgpt.site/'),
+        ...recapShareOptions({ title, text, url }),
         dialogTitle: 'Seyahat özetini paylaş'
       });
     },

@@ -9,7 +9,8 @@ const API_ROOT = "https://generativelanguage.googleapis.com/v1beta";
 
 const allowedOrigins = new Set([
   "https://roamly-travel.yigitonen.chatgpt.site",
-  "capacitor://localhost"
+  "roamly://localhost",
+  "https://localhost"
 ]);
 
 (Deno.env.get("ALLOWED_ORIGINS") || "")

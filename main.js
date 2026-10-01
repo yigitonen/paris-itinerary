@@ -21,6 +21,7 @@ import { renderRouteMap } from './src/map.js';
 import { ensureProfile, loadConnections, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
 import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
+import { recapShareOptions } from './src/sharing.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -688,11 +689,11 @@ document.addEventListener('click', async (event) => {
   if (action === 'share-trip') {
     const trip = activeTrip();
     const stopCount = trip.days.reduce((sum, day) => sum + (day.stops?.length || 0), 0);
-    const shareData = { title: `${trip.destination} · Roamly`, text: `${formatRange(trip)} · ${trip.days.length} gün · ${stopCount} durak. ${trip.summary || ''}`.trim(), url: location.origin };
+    const shareData = recapShareOptions({ title: `${trip.destination} · Roamly`, text: `${formatRange(trip)} · ${trip.days.length} gün · ${stopCount} durak. ${trip.summary || ''}`.trim(), url: window.RoamlyNative?.isNative ? undefined : location.origin });
     try {
       if (window.RoamlyNative?.isNative) await window.RoamlyNative.shareRecap(shareData);
       else if (navigator.share) await navigator.share(shareData);
-      else { await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`); toast('Seyahat özeti panoya kopyalandı.'); }
+      else { await navigator.clipboard.writeText([shareData.title, shareData.text, shareData.url].filter(Boolean).join('\n')); toast('Seyahat özeti panoya kopyalandı.'); }
     } catch (error) { if (error?.name !== 'AbortError') { console.error(error); toast('Seyahat özeti paylaşılamadı.', 'error'); } }
   }
   if (action === 'export-data') {

@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.112.0";
 
 const GOOGLE_ROOT = "https://places.googleapis.com/v1";
 const DAILY_LIMIT = 120;
-const allowedOrigins = new Set(["https://roamly-travel.yigitonen.chatgpt.site", "capacitor://localhost"]);
+const allowedOrigins = new Set(["https://roamly-travel.yigitonen.chatgpt.site", "roamly://localhost", "https://localhost"]);
 (Deno.env.get("ALLOWED_ORIGINS") || "").split(",").map((value) => value.trim()).filter(Boolean).forEach((value) => allowedOrigins.add(value));
 
 function cors(request: Request) {
