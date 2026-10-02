@@ -2,7 +2,7 @@
   "appId": "com.yigitonen.roamly",
   "appName": "Roamly",
   "webDir": "dist",
-  "backgroundColor": "#f6f7f2",
+  "backgroundColor": "#f4f1e9",
   "loggingBehavior": "production",
   "server": {
     "androidScheme": "https",
@@ -12,15 +12,15 @@
     "SplashScreen": {
       "launchShowDuration": 1400,
       "launchAutoHide": true,
-      "backgroundColor": "#f6f7f2",
+      "backgroundColor": "#f4f1e9",
       "androidScaleType": "CENTER_CROP",
       "showSpinner": false,
       "splashFullScreen": true,
       "splashImmersive": false
     },
     "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#f6f7f2",
+      "style": "LIGHT",
+      "backgroundColor": "#f4f1e9",
       "overlaysWebView": false
     },
     "Keyboard": {

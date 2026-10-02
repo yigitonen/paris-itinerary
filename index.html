@@ -51,7 +51,7 @@
           <span class="brand-symbol" aria-hidden="true"><i data-lucide="route"></i></span><span>Roamly</span>
         </button>
         <div class="sync-state" id="syncState" role="status"><span></span><em>Hazır</em></div>
-        <button class="account-button" id="accountButton" data-open="auth"><span class="account-avatar">YÖ</span><span class="account-copy"><strong>Misafir modunda</strong><small>Bulut senkronu kapalı</small></span><i data-lucide="chevron-down"></i></button>
+        <button class="account-button" id="accountButton" data-route="settings" aria-label="Hesap ve ayarlar"><span class="account-avatar"><i data-lucide="user-round"></i></span><span class="account-copy"><strong>Misafir modunda</strong><small>Bulut senkronu kapalı</small></span><i data-lucide="chevron-down"></i></button>
       </header>
 
       <section class="page active" id="page-home" data-page="home">
@@ -142,7 +142,7 @@
   <div class="modal" id="aiConsentModal" aria-hidden="true" inert>
     <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
     <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="aiConsentTitle" aria-describedby="aiConsentLead">
-      <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY AI · İZNİN</span><h2 id="aiConsentTitle">Planın için bilgilerini Google Gemini’ye gönderelim mi?</h2><p id="aiConsentLead">AI planı, yazdıkların Roamly’nin sunucusu üzerinden Google Gemini’ye gönderilerek hazırlanır. Göndermeden önce senden izin istiyoruz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY AI · İZNİN</span><h2 id="aiConsentTitle">Planın için Gemini’ye bilgi gönderelim mi?</h2><p id="aiConsentLead">AI planı, yazdıkların Roamly’nin sunucusu üzerinden Google Gemini’ye gönderilerek hazırlanır. Göndermeden önce senden izin istiyoruz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
       <div class="planner-form consent-body">
         <div><strong>Gemini’ye gönderilenler</strong><ul class="consent-list"><li>Şehir</li><li>Başlangıç tarihi ve kaç gün olduğu</li><li>Seyahat stili ve tempo tercihin</li><li>Özel not alanına yazdıkların</li></ul></div>
         <p>E-posta adresin ve hesap kimliğin Gemini’ye gönderilmez. Yer araştırması için Gemini, Google Maps’ten yararlanır. Roamly bu bilgileri reklam için kullanmaz.</p>

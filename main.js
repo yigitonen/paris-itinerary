@@ -92,6 +92,11 @@ function toast(message, tone = 'ok') {
   const element = $('#toast');
   $('span', element).textContent = message;
   element.dataset.tone = tone;
+  element.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+  $('svg, i', element)?.remove();
+  const iconName = tone === 'error' ? 'circle-alert' : 'circle-check';
+  element.insertAdjacentHTML('afterbegin', `<i data-lucide="${escapeHtml(iconName)}"></i>`);
+  icons();
   element.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => element.classList.remove('show'), 2800);
@@ -246,12 +251,13 @@ function showRoute(route, { tripId } = {}) {
   icons();
 }
 
+const accountInitials = (name) => String(name || '').trim().split(/\s+/).map((part) => part[0] || '').join('').slice(0, 2).toLocaleUpperCase('tr-TR') || 'R';
+
 function renderAccount() {
   const user = state.session?.user;
   const button = $('#accountButton');
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Misafir modunda';
-  const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR');
-  $('.account-avatar', button).textContent = user ? initials : 'YÖ';
+  $('.account-avatar', button).innerHTML = user ? escapeHtml(accountInitials(name)) : '<i data-lucide="user-round"></i>';
   $('.account-copy strong', button).textContent = user ? name : 'Misafir modunda';
   $('.account-copy small', button).textContent = user ? 'Bulut senkronu açık' : 'Bulut senkronu kapalı';
 
@@ -311,7 +317,7 @@ function renderMemories() {
 function renderSettings() {
   const user = state.session?.user;
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
-  $('#accountSettings').innerHTML = user ? `<span class="settings-icon"><i data-lucide="cloud-check"></i></span><div><div class="account-profile"><span class="account-avatar">${escapeHtml((name || 'R').slice(0,2).toLocaleUpperCase('tr-TR'))}</span><div><strong>${escapeHtml(name || 'Roamly hesabı')}</strong><small>${escapeHtml(user.email || '')} · senkron açık</small></div></div><p>Seyahatlerin Supabase üzerinde yalnızca hesabın tarafından okunabilir ve düzenlenebilir.</p><button class="secondary-button" data-action="sign-out">Çıkış yap</button></div>` : `<span class="settings-icon"><i data-lucide="cloud"></i></span><div><h2>Bulut senkronu</h2><p>Planlarını bu cihazın dışına taşı, AI planlama kullan ve telefonunda kaldığın yerden devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
+  $('#accountSettings').innerHTML = user ? `<span class="settings-icon"><i data-lucide="cloud-check"></i></span><div><div class="account-profile"><span class="account-avatar">${escapeHtml(accountInitials(name))}</span><div><strong>${escapeHtml(name || 'Roamly hesabı')}</strong><small>${escapeHtml(user.email || '')} · senkron açık</small></div></div><p>Seyahatlerin Supabase üzerinde yalnızca hesabın tarafından okunabilir ve düzenlenebilir.</p><button class="secondary-button" data-action="sign-out">Çıkış yap</button></div>` : `<span class="settings-icon"><i data-lucide="cloud"></i></span><div><h2>Bulut senkronu</h2><p>Planlarını bu cihazın dışına taşı, AI planlama kullan ve telefonunda kaldığın yerden devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
   $('#deleteAccountSettings').classList.toggle('hidden', !user); // guests have no account; their trips stay on this device
   const consent = needsAiConsent() ? null : getAiConsent();
   const consentDate = consent ? formatDateTime(consent.acceptedAt) : '';
