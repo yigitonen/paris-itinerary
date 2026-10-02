@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f2">
+  <meta name="description" content="Roamly hesabını ve ilişkili tüm verilerini kalıcı olarak sil.">
+  <title>Roamly · Hesabı Sil</title>
+  <style>body{margin:0;background:#f6f7f2;color:#19231d;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:min(100% - 36px,720px);margin:auto;padding:calc(34px + env(safe-area-inset-top)) 0 80px}a{color:#315b40}nav a{display:inline-flex;margin-bottom:34px;text-decoration:none;font-weight:700}h1{font-size:36px;line-height:1.1;letter-spacing:-1.5px}h2{font-size:20px;margin-top:34px}p,li{color:#59625b}.card{background:#fff;border:1px solid #e4e8e1;border-radius:18px;padding:20px;margin:24px 0}.card h2{margin-top:0}label{display:block;font-weight:700;margin:14px 0 6px;color:#19231d}input{box-sizing:border-box;width:100%;font:inherit;padding:12px 14px;border:1px solid #cfd6cc;border-radius:12px;background:#fff;color:#19231d}input:focus-visible,button:focus-visible{outline:3px solid #9ec3a9;outline-offset:2px}button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px 17px;margin:14px 10px 0 0;cursor:pointer;background:#1d2c23;color:#fff}button.secondary{background:#e9eee6;color:#1d2c23}button.danger{background:#a3261b}button:disabled{opacity:.45;cursor:not-allowed}.status{min-height:1.5em;margin:14px 0 0;font-weight:600}.status.error{color:#a3261b}.status.ok{color:#315b40}[hidden]{display:none!important}.warn{border-color:#e7c3bd;background:#fff8f6}.small{font-size:14px}</style>
+</head>
+<body><main>
+  <nav><a href="index.html">← Roamly’ye dön</a></nav>
+  <h1>Hesabı Sil</h1>
+  <p>Roamly hesabını ve hesabınla ilişkili tüm verileri buradan kalıcı olarak silebilirsin. Bu sayfa uygulamayı yüklemeden de çalışır.</p>
+
+  <section class="card warn" aria-labelledby="what">
+    <h2 id="what">Neler silinir?</h2>
+    <ul>
+      <li>Hesabın ve giriş bilgilerin (e-posta adresin dahil)</li>
+      <li>Bulutta kayıtlı tüm seyahatlerin; günler, duraklar, harcamalar ve günlük notları</li>
+      <li>Profilin, arkadaşlık istekleri ve sosyal bağlantıların</li>
+      <li>Roamly Locals bekleme listesi kayıtların (hesabına bağlı olanlar ve hesabının e-posta adresiyle yapılanlar)</li>
+      <li>Yapay zekâ planı ve yer arama kullanım sayaçların</li>
+    </ul>
+    <p><strong>Süre:</strong> Silme işlemi onayladığın anda uygulanır ve geri alınamaz. Altyapı sağlayıcımızın otomatik yedeklerinde kalan kopyalar, sağlayıcının yedek saklama süresi dolunca kendiliğinden silinir; bu yedekler hesabını geri getirmek için kullanılmaz.</p>
+    <p class="small">Silinmeyenler: cihazına indirdiğin yedek dosyaları ve bu cihazdaki misafir modu seyahatleri sende kalır (tarayıcı verilerini temizleyerek kaldırabilirsin). Bekleme listesine hesabından farklı bir e-posta adresiyle katıldıysan, o kayıt için aşağıdaki destek kanalını kullan.</p>
+  </section>
+
+  <p id="loading" role="status">Oturum kontrol ediliyor…</p>
+
+  <section class="card" id="signin" aria-labelledby="signin-title" hidden>
+    <h2 id="signin-title">1. Giriş yap</h2>
+    <p>Hesabının sana ait olduğunu doğrulamak için giriş yapmalısın. E-posta adresine tek kullanımlık bir giriş bağlantısı göndeririz; bağlantıyı bu tarayıcıda aç.</p>
+    <form id="signin-form" novalidate>
+      <label for="email">E-posta adresin</label>
+      <input id="email" name="email" type="email" inputmode="email" autocomplete="email" required>
+      <button type="submit" id="send-link">Giriş bağlantısı gönder</button>
+      <button type="button" class="secondary" id="google">Google ile devam et</button>
+    </form>
+    <p class="status" id="signin-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card" id="confirm" aria-labelledby="confirm-title" hidden>
+    <h2 id="confirm-title">2. Silmeyi onayla</h2>
+    <p><strong id="account-email"></strong> hesabı silinecek. Bu işlem geri alınamaz.</p>
+    <form id="confirm-form" novalidate>
+      <label for="confirm-input">Onaylamak için <strong>SİL</strong> veya <strong>DELETE</strong> yaz</label>
+      <input id="confirm-input" name="confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button type="submit" class="danger" id="delete" disabled>Hesabımı kalıcı olarak sil</button>
+      <button type="button" class="secondary" id="signout">Vazgeç ve çıkış yap</button>
+    </form>
+    <p class="status" id="confirm-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card" id="done" aria-labelledby="done-title" hidden>
+    <h2 id="done-title">Hesabın silindi</h2>
+    <p>Hesabın ve ilişkili verilerin silindi, bu tarayıcıdaki oturum kapatıldı. Roamly’yi kullandığın için teşekkürler.</p>
+    <p><a href="index.html">Roamly ana sayfası</a></p>
+  </section>
+
+  <h2>Yardıma mı ihtiyacın var?</h2>
+  <p>Giriş yapamıyorsan veya silme işlemi tamamlanmıyorsa <a href="support.html">Roamly Destek</a> sayfasındaki kanaldan silme talebi gönder; talebine yardımcı oluruz. Public bir kanal kullanıldığı için talebe şifre veya hassas bilgi yazma. Ayrıntılar için <a href="privacy.html">Gizlilik Politikası</a>.</p>
+</main>
+<script type="module" src="./src/delete-account-page.js"></script>
+</body>
+</html>
