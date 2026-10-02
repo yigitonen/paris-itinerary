@@ -15,8 +15,6 @@ async function bootNative() {
   const [
     { App },
     { Browser },
-    { Camera, CameraResultType, CameraSource },
-    { Geolocation },
     { Haptics, ImpactStyle },
     { Keyboard },
     { LocalNotifications },
@@ -27,8 +25,6 @@ async function bootNative() {
   ] = await Promise.all([
     import('@capacitor/app'),
     import('@capacitor/browser'),
-    import('@capacitor/camera'),
-    import('@capacitor/geolocation'),
     import('@capacitor/haptics'),
     import('@capacitor/keyboard'),
     import('@capacitor/local-notifications'),
@@ -40,29 +36,6 @@ async function bootNative() {
 
   window.RoamlyNative = {
     isNative: true,
-    async pickMemoryPhoto() {
-      const photo = await Camera.getPhoto({
-        quality: 82,
-        allowEditing: false,
-        correctOrientation: true,
-        resultType: CameraResultType.DataUrl,
-        source: CameraSource.Prompt
-      });
-      return photo.dataUrl || '';
-    },
-    async getCurrentLocation() {
-      await Geolocation.requestPermissions({ permissions: ['location'] });
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 15_000,
-        maximumAge: 60_000
-      });
-      return {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy
-      };
-    },
     async shareRecap({ title, text, url }) {
       await Share.share({
         ...recapShareOptions({ title, text, url }),

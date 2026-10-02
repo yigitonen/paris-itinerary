@@ -31,7 +31,7 @@
 - [x] Real Friends profiles, requests, acceptance/removal, grants, and row-level security.
 - [x] PKCE Google/email authentication with production Sites and native callback allowlists; obsolete GitHub callbacks removed.
 - [x] Offline app shell, guest persistence, and queued signed-in edits that synchronize after reconnection.
-- [x] Native camera/photo picker, foreground location, recap sharing, local reminders, and custom deep-link integrations.
+- [x] Native recap sharing, local reminders, and custom deep-link integrations.
 - [x] Responsive desktop/mobile layout, keyboard-accessible dialogs, and reduced-motion support.
 - [x] Production builds and dependency audit.
 
@@ -44,13 +44,13 @@
 - [ ] Replace temporary signing with the production keystore and distribution certificate.
 - [ ] Complete Apple App Privacy and Google Play Data Safety forms using `privacy.html` as the source of truth.
 - [ ] Capture App Store and Play Store screenshots from a physical device or simulator.
-- [ ] Test camera, photo picker, location, notifications, sharing, deep links, VoiceOver, and TalkBack on physical devices.
+- [ ] Test notifications, sharing, deep links, VoiceOver, and TalkBack on physical devices.
 - [ ] Archive a signed iOS build and create an Android App Bundle (`.aab`).
 
 ## Data declarations
 
-- Location: used only while the app is in use for map and nearby-place actions.
-- Photos/camera: user-initiated memory capture only.
+- Location: device location is not accessed. Nearby places and weather use approximate coordinates of stops already in the trip.
+- Photos/camera: not accessed; the app requests no camera or photo-library permission.
 - User content: trips, journal, budget, and memories; device-local in guest mode and private cloud storage after sign-in.
 - Contact info: email for account sync or a Locals early-access request.
 - AI input: the trip brief is sent through Roamly's protected backend to Google Gemini only when the user requests an AI plan. On Google's free tier, submitted content may be used to improve Google products.
