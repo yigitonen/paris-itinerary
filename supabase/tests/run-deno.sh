@@ -37,6 +37,7 @@ echo "== deno check (Edge Functions)"
 "${deno_cmd[@]}" check "${flags[@]}" \
   supabase/functions/plan-trip/index.ts \
   supabase/functions/places/index.ts \
+  supabase/functions/delete-account/index.ts \
   supabase/functions/_shared/quota.js \
   supabase/functions/plan-trip/gemini.js \
   supabase/functions/plan-trip/plan-validation.js \

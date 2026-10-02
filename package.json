@@ -6,7 +6,7 @@
   "description": "Roamly native iOS, Android and web travel companion",
   "scripts": {
     "dev": "vite",
-    "test": "node --test native-routing.test.js src/*.test.js supabase/functions/plan-trip/*.test.js supabase/functions/_shared/*.test.js",
+    "test": "node --test native-routing.test.js src/*.test.js supabase/functions/delete-account/*.test.js supabase/functions/plan-trip/*.test.js supabase/functions/_shared/*.test.js",
     "test:functions": "bash supabase/tests/run-deno.sh",
     "test:db": "bash supabase/tests/run.sh",
     "build": "vite build",

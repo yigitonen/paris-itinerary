@@ -173,14 +173,14 @@ select tests.assert_denied($$select 1 from auth.users$$, 'authenticated cannot r
 select tests.as_anon();
 select tests.assert_denied($$select 1 from auth.users$$, 'anon cannot read auth.users');
 
--- Deleting an auth user removes their private data, but leaves a waitlist row (set null) ---
+-- Deleting an auth user removes their private data, including linked waitlist rows ---
 select tests.as_admin();
 delete from auth.users where id = :'b';
 select tests.assert_rows($$select 1 from public.trips where owner_id = 'bbbbbbbb-0000-4000-8000-00000000000b'$$, 0, 'trips cascade on user delete');
 select tests.assert_rows($$select 1 from public.profiles where user_id = 'bbbbbbbb-0000-4000-8000-00000000000b'$$, 0, 'profile cascades on user delete');
 select tests.assert_rows($$select 1 from public.connections where requester_id = 'bbbbbbbb-0000-4000-8000-00000000000b' or addressee_id = 'bbbbbbbb-0000-4000-8000-00000000000b'$$, 0, 'connections cascade on user delete');
 select tests.assert_rows($$select 1 from public.provider_usage where user_id = 'bbbbbbbb-0000-4000-8000-00000000000b'$$, 0, 'provider_usage cascades on user delete');
-select tests.assert_rows($$select 1 from public.locals_waitlist where email = 'b-wait@example.test' and user_id is null$$, 1, 'waitlist row survives user delete, anonymised');
+select tests.assert_rows($$select 1 from public.locals_waitlist where email = 'b-wait@example.test'$$, 0, 'waitlist row cascades on user delete');
 
 -- Structural audits ----------------------------------------------------------
 -- 1. Every table in a schema that PostgREST could expose, or that the API roles
