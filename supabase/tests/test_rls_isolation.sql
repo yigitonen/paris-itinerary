@@ -128,7 +128,7 @@ select tests.assert_rows($$select 1 from public.locals_waitlist$$, 1, 'A reads o
 select tests.assert_rows($$select 1 from public.locals_waitlist where email = 'b-wait@example.test'$$, 0, 'A cannot read B waitlist entry');
 select tests.assert_rows($$select 1 from public.locals_waitlist where user_id is null$$, 0, 'A cannot read anonymous waitlist entries');
 select tests.assert_denied($$insert into public.locals_waitlist (user_id, email, city) values ('bbbbbbbb-0000-4000-8000-00000000000b', 'spoof@example.test', 'Nice')$$, 'A cannot join waitlist as B');
-select tests.assert_affects($$insert into public.locals_waitlist (user_id, email, city) values ('aaaaaaaa-0000-4000-8000-00000000000a', 'a2@example.test', 'Nice')$$, 1, 'A joins waitlist as self');
+select tests.assert_denied($$insert into public.locals_waitlist (user_id, email, city) values ('aaaaaaaa-0000-4000-8000-00000000000a', 'a2@example.test', 'Nice')$$, 'direct waitlist insert is revoked (use join_locals_waitlist)');
 select tests.assert_denied($$update public.locals_waitlist set city = 'x'$$, 'authenticated cannot update waitlist');
 select tests.assert_denied($$delete from public.locals_waitlist$$, 'authenticated cannot delete waitlist');
 
@@ -137,11 +137,10 @@ select tests.assert_rows($$select 1 from public.locals_waitlist$$, 1, 'B reads o
 
 select tests.as_anon();
 select tests.assert_denied($$select 1 from public.locals_waitlist$$, 'anon cannot read waitlist');
-select tests.assert_affects($$insert into public.locals_waitlist (email, city) values ('visitor@example.test', 'Nice')$$, 1, 'anon joins waitlist');
+select tests.assert_denied($$insert into public.locals_waitlist (email, city) values ('visitor@example.test', 'Nice')$$, 'anon direct waitlist insert is revoked (use join_locals_waitlist)');
 select tests.assert_denied($$insert into public.locals_waitlist (user_id, email, city) values ('aaaaaaaa-0000-4000-8000-00000000000a', 'spoof2@example.test', 'Nice')$$, 'anon cannot join as A');
 select tests.assert_denied($$update public.locals_waitlist set city = 'x'$$, 'anon cannot update waitlist');
 select tests.assert_denied($$delete from public.locals_waitlist$$, 'anon cannot delete waitlist');
-select tests.assert_denied($$insert into public.locals_waitlist (email, city) values ('VISITOR@example.test', 'nice')$$, 'waitlist email+city unique ignoring case', '23505');
 
 -- legacy usage tables and the new ledger -----------------------------------
 select tests.as_user(:'a');
@@ -199,7 +198,7 @@ begin
 end $$;
 
 -- 2. Nothing in public or private is writable by anon, and anon only gets the
---    one intended privilege (INSERT on locals_waitlist).
+--    privilege at all on any table (the waitlist is joined through a function).
 do $$
 declare r record;
 begin
@@ -207,7 +206,6 @@ begin
     select table_schema, table_name, privilege_type
     from information_schema.role_table_grants
     where grantee = 'anon' and table_schema in ('public', 'private', 'auth')
-      and not (table_schema = 'public' and table_name = 'locals_waitlist' and privilege_type = 'INSERT')
   loop
     raise exception 'FAIL [grant audit]: anon has % on %.%', r.privilege_type, r.table_schema, r.table_name;
   end loop;
@@ -262,7 +260,7 @@ begin
 end $$;
 
 -- 5. Schema private is not usable by the API roles; functions in public/private
---    are not executable by them (except nothing).
+--    are not executable by them, except the explicitly allowed RPCs below.
 select tests.assert_true(not has_schema_privilege('anon', 'private', 'USAGE')
   and not has_schema_privilege('authenticated', 'private', 'USAGE'), 'private schema is closed to API roles');
 do $$
@@ -274,6 +272,7 @@ begin
     join pg_namespace n on n.oid = p.pronamespace
     cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
     where n.nspname in ('public', 'private') and a.privilege_type = 'EXECUTE'
+      and p.oid::regprocedure::text <> 'join_locals_waitlist(text,text,text)'
       and (a.grantee = 0 or a.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated')))
   loop
     raise exception 'FAIL [function audit]: % is executable by %', r.sig, case when r.grantee = 0 then 'PUBLIC' else r.grantee::regrole::text end;
