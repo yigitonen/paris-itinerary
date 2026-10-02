@@ -126,13 +126,7 @@ body.offline .offline-notice { display: block; }
 .card-top, .section-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .card-top h2 { font-size: 28px; margin: 0; }
 .card-menu { width: 37px; height: 37px; border-radius: 50%; border: 1px solid var(--line); background: transparent; display: grid; place-items: center; }
-.route-preview { height: 255px; border-radius: 18px; margin-top: 17px; position: relative; overflow: hidden; background: #e7e5df; }
-.route-preview:before { content: ""; position: absolute; inset: 0; opacity: .78; background: linear-gradient(33deg, transparent 47%, #f8f5ee 48% 51%, transparent 52%), linear-gradient(-36deg, transparent 44%, #f8f5ee 45% 48%, transparent 49%), linear-gradient(90deg, transparent 59%, #f8f5ee 60% 63%, transparent 64%), repeating-linear-gradient(12deg, transparent 0 37px, rgba(255,255,255,.55) 38px 41px); }
-.route-line { position: absolute; left: 14%; top: 58%; width: 72%; height: 4px; background: var(--coral); transform: rotate(-9deg); box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
-.route-line:before, .route-line:after { content: ""; position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--coral); border: 4px solid white; top: -7px; }
-.route-line:before { left: -2px; } .route-line:after { right: -2px; }
-.route-pin { position: absolute; width: 29px; height: 29px; border-radius: 50%; background: var(--coral-strong); color: white; border: 3px solid var(--surface); display: grid; place-items: center; font-size: 11px; font-weight: 800; box-shadow: 0 4px 12px rgba(0,0,0,.16); }
-.route-pin.p1 { left: 25%; top: 52%; } .route-pin.p2 { left: 52%; top: 40%; } .route-pin.p3 { right: 18%; top: 52%; }
+.route-preview { height: 255px; border-radius: 18px; margin-top: 17px; position: relative; overflow: hidden; background: #e7e5df center/cover; }
 .route-meta { display: flex; align-items: center; gap: 18px; margin-top: 17px; color: var(--muted); font-size: 12px; }
 .route-meta span { display: flex; align-items: center; gap: 6px; }
 .route-meta strong { color: var(--ink); }
@@ -225,11 +219,12 @@ body.offline .offline-notice { display: block; }
 .itinerary-card, .trip-side, .trip-side-card, .stop-card { min-width: 0; }
 .day-tabs { display: flex; overflow: auto; gap: 7px; padding-bottom: 4px; scrollbar-width: none; }
 .day-tabs::-webkit-scrollbar { display: none; }
+.day-tabs-bar { position: sticky; top: 78px; z-index: 20; background: var(--canvas); padding: 10px 0; margin-top: 12px; }
 .day-tab { min-width: 112px; min-height: 52px; border: 1px solid var(--line); background: transparent; border-radius: 12px; padding: 10px 12px; text-align: left; }
 .day-tab.active { background: var(--forest); border-color: var(--forest); color: white; }
 .day-tab strong { display: block; font-size: 13px; }
 .day-tab small { display: block; margin-top: 3px; font-size: 11px; opacity: .65; }
-.day-head { margin: 23px 0 17px; display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.day-head { margin: 4px 0 17px; display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
 .day-head h2 { font-size: 31px; margin-bottom: 4px; }
 .day-head p { color: var(--muted); font-size: 13px; margin: 0; }
 .stop-list { display: grid; }
@@ -460,6 +455,11 @@ fieldset { border: 0; padding: 0; margin: 0; }
   .account-avatar { width: 35px; height: 35px; }
   .page { padding: 28px 17px 58px; }
   .home-head, .page-head { align-items: flex-start; margin-bottom: 22px; }
+  #page-home.active.has-trip { display: flex; flex-direction: column; }
+  #page-home.has-trip .home-head { order: 0; }
+  #page-home.has-trip .home-grid { order: 1; margin-top: 0; }
+  #page-home.has-trip .plan-composer { order: 2; margin-top: 16px; min-height: 0; }
+  #page-home.has-trip .home-lower { order: 3; }
   .home-head h1, .page-head h1 { font-size: 39px; }
   .home-head p, .page-head p { font-size: 14px; line-height: 1.45; }
   .desktop-only { display: none; }
@@ -487,7 +487,8 @@ fieldset { border: 0; padding: 0; margin: 0; }
   .itinerary-card, .trip-side-card { padding: 17px; }
   .trip-side { grid-template-columns: 1fr; }
   .route-studio { padding: 16px; border-radius: 20px; }
-  .route-map { height: 320px; }
+  .route-map { height: 240px; }
+  .day-tabs-bar { top: calc(66px + env(safe-area-inset-top)); }
   .studio-toolbar .primary-button { width: 100%; margin-left: 0; }
   .nearby-results, .profile-results, .friends-grid { grid-template-columns: 1fr; }
   .nearby-chips a { margin-left: 0; }
@@ -522,7 +523,7 @@ fieldset { border: 0; padding: 0; margin: 0; }
 @media (max-width: 420px) {
   .quick-plan-form { grid-template-columns: 1fr; }
   .quick-plan-form label:first-child, .quick-plan-form .primary-button { grid-column: auto; }
-  .plan-composer { min-height: 520px; }
+  .plan-composer { min-height: 0; }
   .composer-art { inset: 58% 0 0; }
   .route-meta { gap: 10px; flex-wrap: wrap; }
   .page-head .primary-button { min-width: 44px; padding: 0 12px; }
