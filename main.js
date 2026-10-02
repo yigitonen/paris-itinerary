@@ -490,7 +490,7 @@ async function persistTrip(trip, successMessage) {
   } catch (error) {
     console.error(error);
     setSync('Kaydedilemedi', 'error');
-    toast(!navigator.onLine && state.session
+    toast(error.code === 'plan_too_large' ? error.message : !navigator.onLine && state.session
       ? 'Çevrimdışıyken bulut planındaki değişiklik kaydedilemez. Bağlantı gelince yeniden dene.'
       : 'Değişiklik kaydedilemedi. Bağlantını kontrol edip yeniden dene.', 'error');
     throw error;

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deleteTrip, failedTripSyncCount, flushPendingTripChanges, loadTrips, migrateGuestTrips, pendingTripSyncCount, saveTrip, supabase } from './repository.js';
 import { createDemoTrip } from './data.js';
+import { planSizeBytes } from './trip-plan.js';
 import { GUEST_STORAGE_KEY } from './config.js';
 import { readCloudCache, readSyncQueue } from './offline.js';
 
@@ -348,4 +349,37 @@ test('a retried migration does not duplicate the example', withCloud(async ({ cl
   await migrateGuestTrips(session);
   assert.deepEqual([...cloud.rows.keys()], [id]);
   assert.equal(localStorage.getItem(GUEST_STORAGE_KEY), null);
+}));
+
+const hugeTrip = () => ({ ...trip('trip-big', 'Dev gezi'), journals: Array.from({ length: 100 }, (_, n) => ({ id: `j${n}`, title: 'J', body: 'x'.repeat(20000) })) });
+
+test('an oversized plan is refused before any cloud request or queueing', withCloud(async ({ cloud, setOnline }) => {
+  await assert.rejects(() => saveTrip(hugeTrip(), session, []), (error) => error.code === 'plan_too_large' && /^'Dev gezi' seyahati buluta kaydedilemeyecek kadar büyük/.test(error.message));
+  assert.deepEqual(cloud.started, []);
+  assert.equal(cloud.rows.size, 0);
+  setOnline(false);
+  await assert.rejects(() => saveTrip(hugeTrip(), session, []), (error) => error.code === 'plan_too_large');
+  assert.equal(pendingTripSyncCount(session), 0);
+  assert.deepEqual(readCloudCache('sync-user'), []);
+}));
+
+test('planSizeBytes equals the size of the plan toRow sends to the cloud', withCloud(async ({ cloud }) => {
+  const sample = { ...trip('trip-a', 'Ölçüm'), note: 'Çay, kahve: "iki"', source: 'gemini', plannerMeta: { provider: 'x', verifiedPlaces: 2 }, days: [{ id: 'd1', stops: [{ id: 's1', title: 'A', lat: null, lng: 0 }] }] };
+  await saveTrip(sample, session, []);
+  const sent = cloud.rows.get('trip-a').plan;
+  const oracle = JSON.stringify(sent).replace(/("(?:[^"\\]|\\.)*")|([,:])/g, (_all, string, separator) => string || `${separator} `);
+  assert.equal(planSizeBytes(sample), Buffer.byteLength(oracle, 'utf8'));
+}));
+
+test('guests can still save a large trip locally', withCloud(async ({ cloud }) => {
+  const { trips } = await saveTrip(hugeTrip(), null, []);
+  assert.equal(trips.length, 1);
+  assert.deepEqual(cloud.started, []);
+}));
+
+test('migrating a guest trip that is too large to sync uploads nothing and keeps the guest copy', withCloud(async ({ cloud }) => {
+  localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify([trip('00000000-0000-4000-8000-000000000001', 'Küçük'), { ...hugeTrip(), id: '00000000-0000-4000-8000-000000000002' }]));
+  await assert.rejects(() => migrateGuestTrips(session), (error) => error.code === 'plan_too_large');
+  assert.deepEqual(cloud.started, []);
+  assert.equal(JSON.parse(localStorage.getItem(GUEST_STORAGE_KEY)).length, 2);
 }));
