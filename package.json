@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "test": "node --test native-routing.test.js src/*.test.js supabase/functions/plan-trip/*.test.js supabase/functions/_shared/*.test.js",
+    "test:functions": "bash supabase/tests/run-deno.sh",
+    "test:db": "bash supabase/tests/run.sh",
     "build": "vite build",
     "build:sites": "ROAMLY_SITES_BUILD=1 vite build",
     "preview": "vite preview",
