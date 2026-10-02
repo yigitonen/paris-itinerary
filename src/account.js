@@ -22,6 +22,12 @@ export function isDeleteConfirmation(value) {
   return text === 'SİL' || text === 'SIL' || text === 'DELETE';
 }
 
+// Whether the in-app confirm button may be pressed: the confirmation word is typed and nothing is in flight.
+// Connectivity is checked on submit so an offline attempt can explain itself with a message.
+export function canSubmitAccountDeletion({ text, busy = false } = {}) {
+  return !busy && isDeleteConfirmation(text);
+}
+
 const MESSAGES = {
   unauthorized: 'Oturumun doğrulanamadı. Lütfen çıkış yapıp tekrar giriş yap, sonra yeniden dene.',
   auth_unavailable: 'Oturum şu anda doğrulanamıyor. Lütfen biraz sonra tekrar dene.',

@@ -104,6 +104,7 @@
           <section class="settings-card"><span class="settings-icon peach"><i data-lucide="hand-heart"></i></span><div><span class="eyebrow coral-text">ERKEN ERİŞİM</span><h2>Roamly Locals</h2><p>Yerellerle deneyim pazarı henüz açık değil. İlk güvenli pilotu kurarken bekleme listesine katıl.</p><button class="secondary-button" data-open="locals">Listeye katıl</button></div></section>
           <section class="settings-card"><span class="settings-icon"><i data-lucide="shield-check"></i></span><div><h2>Gizlilik ve destek</h2><p>Roamly reklam takibi yapmaz. Cihaz konumuna, kameraya ve fotoğraf arşivine erişmez.</p><div class="link-row"><a href="privacy.html">Gizlilik politikası <i data-lucide="arrow-up-right"></i></a><a href="support.html">Destek <i data-lucide="arrow-up-right"></i></a></div></div></section>
           <section class="settings-card" id="aiConsentSettings"></section>
+          <section class="settings-card hidden" id="deleteAccountSettings"><span class="settings-icon danger"><i data-lucide="user-x"></i></span><div><h2>Hesabı sil</h2><p>Hesabını ve buluttaki tüm verilerini kalıcı olarak sil. Bu işlem geri alınamaz; önce yedek indirebilirsin.</p><button class="danger-button" type="button" data-action="open-delete-account">Hesabı sil</button></div></section>
         </div>
       </section>
 
@@ -187,6 +188,20 @@
       <div class="divider" id="authDivider"><span>veya</span></div>
       <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" id="emailSignInButton" type="submit">Giriş bağlantısı gönder</button></form>
       <p class="form-note">Şifre yok. E-postana güvenli bir giriş bağlantısı göndeririz.</p>
+    </section>
+  </div>
+
+  <div class="modal" id="deleteAccountModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
+    <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="deleteAccountTitle" aria-describedby="deleteAccountLead">
+      <div class="modal-head"><div><span class="eyebrow danger-text">HESABI SİL</span><h2 id="deleteAccountTitle">Hesabını kalıcı olarak silelim mi?</h2><p id="deleteAccountLead"><strong id="deleteAccountEmail">Bu hesap</strong> silinecek. Silme işlemi onayladığın anda uygulanır ve geri alınamaz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <form class="planner-form consent-body" id="deleteAccountForm" autocomplete="off">
+        <div><strong>Neler silinir?</strong><ul class="consent-list"><li>Hesabın ve giriş bilgilerin (e-posta adresin dahil)</li><li>Bulutta kayıtlı tüm seyahatlerin; günler, duraklar, harcamalar ve günlük notları</li><li>Profilin, arkadaşlık istekleri ve sosyal bağlantıların</li><li>Roamly Locals bekleme listesi kayıtların (hesabına bağlı olanlar ve hesabının e-posta adresiyle yapılanlar)</li><li>Yapay zekâ planı ve yer arama kullanım sayaçların</li></ul></div>
+        <p>Bu cihazdaki hatırlatıcılar ve önbellek de temizlenir. İndirdiğin yedek dosyaları ve bu cihazdaki misafir modu seyahatleri sende kalır.</p>
+        <button class="secondary-button" type="button" data-action="export-data"><i data-lucide="download"></i>Önce yedek indir</button>
+        <label class="form-field full"><span>Onaylamak için <strong>SİL</strong> yaz</span><span class="field"><i data-lucide="triangle-alert"></i><input id="deleteAccountInput" name="confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SİL" aria-describedby="deleteAccountLead" data-initial-focus></span></label>
+        <div class="form-actions"><button class="secondary-button" type="button" data-close="modal">Vazgeç</button><button class="danger-button solid" type="submit" id="deleteAccountConfirm" disabled>Hesabımı kalıcı olarak sil</button></div>
+      </form>
     </section>
   </div>
 

@@ -6,6 +6,8 @@ const tripStops = (trip) => (trip?.days || []).flatMap((day) => day?.stops || []
 
 export const reminderIdsForStops = (stops = []) => stops.filter(hasReminder).map((stop) => reminderIdFor(stop.id));
 export const reminderIdsForTrip = (trip) => reminderIdsForStops(tripStops(trip));
+// Every reminder of every trip, each id once (account deletion cancels all of them).
+export const reminderIdsForTrips = (trips = []) => [...new Set(trips.flatMap(reminderIdsForTrip))];
 
 // Reminder ids that were scheduled by `previousTrips` but are no longer wanted by `nextTrips`:
 // the stop (or its whole trip) is gone, or its reminder was cleared elsewhere, for example on another device.

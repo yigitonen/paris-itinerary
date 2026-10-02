@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsOnUserChange } from './reminders.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsForTrips, reminderIdsOnUserChange } from './reminders.js';
 
 const stop = (id, reminderAt = '') => ({ id, title: id, reminderAt });
 const trip = (id, ...stops) => ({ id, days: [{ id: `${id}-d1`, stops: stops.slice(0, 1) }, { id: `${id}-d2`, stops: stops.slice(1) }] });
@@ -67,4 +67,16 @@ test('a guest or unchanged user cancels nothing', () => {
   assert.deepEqual(reminderIdsOnUserChange({ previousUserId: undefined, userId: null, previousTrips: trips }), []);
   assert.deepEqual(reminderIdsOnUserChange({ previousUserId: 'user-a', userId: 'user-a', previousTrips: trips }), []);
   assert.deepEqual(reminderIdsOnUserChange(), []);
+});
+
+test('account deletion collects every reminder of every trip once', () => {
+  const stop = (id, reminderAt) => ({ id, reminderAt });
+  const trips = [
+    { days: [{ stops: [stop('a', '2026-10-05T09:00'), stop('b')] }, { stops: [stop('c', '2026-10-06T09:00')] }] },
+    { days: [{ stops: [stop('a', '2026-10-05T09:00'), stop('e', '2026-10-07T09:00')] }] },
+    { days: [] }
+  ];
+  assert.deepEqual(reminderIdsForTrips(trips).sort(), ['a', 'c', 'e'].map(reminderIdFor).sort());
+  assert.deepEqual(reminderIdsForTrips(), []);
+  assert.deepEqual(reminderIdsForTrips([null, {}]), []);
 });
