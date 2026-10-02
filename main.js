@@ -27,7 +27,7 @@ import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
-import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip } from './src/reminders.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsOnUserChange } from './src/reminders.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
 
@@ -1109,12 +1109,18 @@ async function applySession(session, { announce = false } = {}) {
   state.session = session || null;
   const { changed, previousUserId, userId } = userTracker.change(session);
   if (!changed) return;
+  // state.trips still belongs to the previous user here; their trips are about to disappear from view.
+  const previousTrips = state.trips;
   resetUserState();
   renderAll();
   if (!userId) {
     postSignIn.reset();
     await refreshTrips();
-  } else {
+  }
+  // Reminders of the previous account's cloud trips must not keep firing for someone else. After a sign-out the guest
+  // trips left on the device (now in state.trips) keep theirs. Non-blocking; failures are logged by cancelReminders.
+  void cancelReminders(reminderIdsOnUserChange({ previousUserId, userId, previousTrips, shownTrips: userId ? [] : state.trips }));
+  if (userId) {
     if ($('#authModal')?.classList.contains('open')) closeModal($('#authModal'));
     if (state.route === 'trip') showRoute('trips');
     await postSignIn.run(userId, () => runPostSignIn(session, { announce: announce && previousUserId === null }));
