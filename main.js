@@ -25,6 +25,7 @@ import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip } from './src/reminders.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
 
@@ -34,7 +35,6 @@ const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (char) => (
 const icons = () => window.lucide?.createIcons({ attrs: { 'aria-hidden': 'true' } });
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const uid = () => crypto.randomUUID();
-const reminderIdFor = (value) => [...String(value)].reduce((hash, char) => Math.imul(31, hash) + char.charCodeAt(0) | 0, 7) >>> 1 || 1;
 
 const formatDate = (value, options = { day: 'numeric', month: 'short' }) => {
   const date = new Date(`${value}T12:00:00`);
@@ -68,6 +68,7 @@ const state = {
   activeTripId: null,
   activeDayId: null,
   editingBudget: null,
+  tripsUserId: null,
   filter: 'all',
   syncing: false,
   nearbyResults: [],
@@ -398,13 +399,25 @@ function renderAll() {
   icons();
 }
 
+// Removes native reminders of deleted stops/trips. Failures are logged and never block the deletion.
+async function cancelReminders(ids) {
+  if (!window.RoamlyNative?.isNative) return;
+  for (const id of ids) {
+    try { await window.RoamlyNative.cancelTripReminder(id); } catch (error) { console.error(error); }
+  }
+}
+
 async function refreshTrips() {
   setSync('Senkronlanıyor', 'syncing');
   const userId = state.session?.user?.id ?? null;
   try {
     const trips = await loadTrips(state.session);
     if ((state.session?.user?.id ?? null) !== userId) return;
+    // Trips or reminders removed elsewhere (another device) no longer need their local notification; never compare across accounts.
+    const orphaned = state.tripsUserId === userId ? orphanedReminderIds(state.trips, trips) : [];
     state.trips = trips;
+    state.tripsUserId = userId;
+    cancelReminders(orphaned);
     if (!state.activeTripId || !state.trips.some((trip) => trip.id === state.activeTripId)) state.activeTripId = state.trips[0]?.id || null;
     const pending = pendingTripSyncCount(state.session);
     setSync(state.session
@@ -692,9 +705,11 @@ document.addEventListener('click', async (event) => {
     const form = $('#stopForm');
     const trip = activeTrip();
     const day = trip.days.find((item) => item.id === form.elements.dayId.value);
+    const removedReminders = reminderIdsForStops(day.stops.filter((stop) => stop.id === form.elements.stopId.value));
     day.stops = day.stops.filter((stop) => stop.id !== form.elements.stopId.value);
     closeModal();
     await persistTrip(trip, 'Durak silindi.');
+    await cancelReminders(removedReminders);
     renderTripDetail();
   }
   if (action === 'delete-trip') {
@@ -702,6 +717,7 @@ document.addEventListener('click', async (event) => {
     if (!trip || !window.confirm(`${trip.destination} seyahatini kalıcı olarak silmek istiyor musun?`)) return;
     try {
       state.trips = await deleteTrip(trip.id, state.session, state.trips);
+      await cancelReminders(reminderIdsForTrip(trip));
       state.activeTripId = state.trips[0]?.id || null;
       renderAll();
       showRoute('trips');
