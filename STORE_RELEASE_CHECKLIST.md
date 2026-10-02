@@ -39,6 +39,8 @@
 
 - [x] Complete a protected end-to-end AI plan smoke test with the server-side `GEMINI_API_KEY` on Google AI Studio Free Tier.
 - [x] Passwordless email-link and Google sign-in only; no password is collected. Revisit leaked-password protection if passwords are added.
+- [x] iOS sign-in is email magic-link only: the Google button is hidden on native iOS (`signInOptions` in `src/auth-options.js`; web and Android keep Google). App Store guideline 4.8 requires Sign in with Apple whenever an app offers a third-party login such as Google, and Sign in with Apple is not implemented yet. Adding it later (Apple capability, Supabase Apple provider, button on iOS) would allow re-enabling Google on iOS by flipping the rule in `signInOptions`.
+- [ ] On a physical iPhone, confirm the email link opens the app through the `roamly://` callback and signs in, and that no Google button appears in the sign-in dialog. App Review needs a way to sign in, so give reviewers a test email inbox or a pre-created account in the review notes.
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.
 - [ ] Replace temporary signing with the production keystore and distribution certificate.
@@ -53,5 +55,5 @@
 - Photos/camera: not accessed; the app requests no camera or photo-library permission.
 - User content: trips, journal, budget, and memories; device-local in guest mode and private cloud storage after sign-in.
 - Contact info: email for account sync or a Locals early-access request.
-- AI input: the trip brief is sent through Roamly's protected backend to Google Gemini only when the user requests an AI plan. On Google's free tier, submitted content may be used to improve Google products.
+- AI input: city, start date, day count, style, pace and the optional note are sent through Roamly's protected backend to Google Gemini only when the user requests an AI plan, and only after an in-app consent dialog (versioned, stored on the device, withdrawable in Settings; declining sends nothing). Retention and product-improvement use depend on Google's Gemini API terms for the tier in use; re-check them before declaring Data Safety answers.
 - Tracking/advertising: none.

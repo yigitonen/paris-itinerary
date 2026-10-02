@@ -515,3 +515,9 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .budget-actions button { flex: 1; min-height: 38px; }
 .trip-side-card .budget-note { display: flex; align-items: flex-start; gap: 6px; margin: 10px 0 0; color: #836a5f; font-size: 8px; line-height: 1.5; }
 .budget-note svg { width: 12px; flex: 0 0 auto; margin-top: 1px; }
+
+.consent-body { gap: 12px; text-align: left; }
+.consent-body p, .consent-body li { color: var(--muted); font-size: 10px; line-height: 1.55; margin: 0; }
+.consent-body strong { font-size: 11px; }
+.consent-body a { color: var(--ink); font-weight: 700; }
+.consent-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }

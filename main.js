@@ -16,6 +16,8 @@ import {
   supabase
 } from './src/repository.js';
 import { generateTrip } from './src/planner.js';
+import { signInOptions } from './src/auth-options.js';
+import { clearAiConsent, getAiConsent, needsAiConsent, setAiConsent } from './src/ai-consent.js';
 import { createPlacesClient, debounce, NEARBY_CATEGORIES, placeSearchMessage } from './src/places.js';
 import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
 import { renderRouteMap } from './src/map.js';
@@ -25,7 +27,7 @@ import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
-import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip } from './src/reminders.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsOnUserChange } from './src/reminders.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
 
@@ -137,6 +139,7 @@ function openModal(id) {
 
 function closeModal(modal = $('.modal.open'), restoreFocus = true) {
   if (!modal) return;
+  if (modal.id === 'aiConsentModal') settleAiConsent(false); // closing without choosing counts as declining
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
   modal.inert = true;
@@ -147,6 +150,38 @@ function closeModal(modal = $('.modal.open'), restoreFocus = true) {
     modalReturnFocus = null;
     setTimeout(() => target?.focus(), 0);
   }
+}
+
+// Resolves true/false once the person answers the AI consent dialog; closing it any other way resolves false.
+let aiConsentResolver = null;
+function settleAiConsent(accepted) {
+  const resolve = aiConsentResolver;
+  aiConsentResolver = null;
+  resolve?.(accepted);
+}
+function requestAiConsent() {
+  settleAiConsent(false);
+  return new Promise((resolve) => {
+    aiConsentResolver = resolve;
+    openModal('#aiConsentModal');
+  });
+}
+
+// Native iOS offers email sign-in only (App Store 4.8 asks for Sign in with Apple next to Google); web and Android keep Google.
+// Capacitor injects window.Capacitor before the page scripts run, while RoamlyNative is only filled in once its plugins load.
+const appPlatform = () => window.RoamlyNative?.platform || window.Capacitor?.getPlatform?.() || 'web';
+function applySignInOptions() {
+  const { google } = signInOptions(appPlatform());
+  const googleButton = $('#googleSignInButton');
+  const email = $('#emailAuthForm').elements.email;
+  googleButton.classList.toggle('hidden', !google);
+  $('#authDivider').classList.toggle('hidden', !google);
+  // The email button becomes the primary action and takes initial focus when it is the only option.
+  const submit = $('#emailSignInButton');
+  submit.classList.toggle('primary-button', !google);
+  submit.classList.toggle('secondary-button', google);
+  googleButton.toggleAttribute('data-initial-focus', google);
+  email.toggleAttribute('data-initial-focus', !google);
 }
 
 function setLoading(open) {
@@ -275,6 +310,11 @@ function renderSettings() {
   const user = state.session?.user;
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
   $('#accountSettings').innerHTML = user ? `<span class="settings-icon"><i data-lucide="cloud-check"></i></span><div><div class="account-profile"><span class="account-avatar">${escapeHtml((name || 'R').slice(0,2).toLocaleUpperCase('tr-TR'))}</span><div><strong>${escapeHtml(name || 'Roamly hesabı')}</strong><small>${escapeHtml(user.email || '')} · senkron açık</small></div></div><p>Seyahatlerin Supabase üzerinde yalnızca hesabın tarafından okunabilir ve düzenlenebilir.</p><button class="secondary-button" data-action="sign-out">Çıkış yap</button></div>` : `<span class="settings-icon"><i data-lucide="cloud"></i></span><div><h2>Bulut senkronu</h2><p>Planlarını bu cihazın dışına taşı, AI planlama kullan ve telefonunda kaldığın yerden devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
+  const consent = needsAiConsent() ? null : getAiConsent();
+  const consentDate = consent ? formatDateTime(consent.acceptedAt) : '';
+  $('#aiConsentSettings').innerHTML = `<span class="settings-icon peach"><i data-lucide="sparkles"></i></span><div><h2>AI planlama izni</h2>${consent
+    ? `<p>İzin verildi${consentDate ? ` · ${escapeHtml(consentDate)}` : ''}. AI planı isterken şehir, tarihler, tercihlerin ve notun Roamly’nin sunucusu üzerinden Google Gemini’ye gönderilir. İzni geri çekersen sonraki AI planında yeniden sorarız.</p><button class="secondary-button" data-action="ai-consent-withdraw">İzni geri çek</button>`
+    : `<p>Henüz izin vermedin. İlk AI planı isteğinde neyin Google Gemini’ye gönderileceğini gösterip sana soracağız. Boş planlar hiçbir şey göndermez.</p>`}</div>`;
   icons();
 }
 
@@ -485,6 +525,13 @@ async function runPlanner(input) {
     sessionStorage.setItem('roamly-pending-plan', JSON.stringify(input));
     openModal('#authModal');
     toast('AI planlama için önce hesabınla devam et.');
+    return;
+  }
+  // Nothing leaves the device for Gemini until the person has agreed to exactly what is sent.
+  if (needsAiConsent() && !await requestAiConsent()) {
+    fillPlanner(input);
+    openModal('#plannerModal');
+    toast('AI planı için izin vermedin, hiçbir şey gönderilmedi. İstersen boş planla devam edebilirsin.');
     return;
   }
   closeModal();
@@ -764,7 +811,21 @@ document.addEventListener('click', async (event) => {
     try { await removeConnection(control.dataset.connectionId, state.session); await renderFriends(); toast('Arkadaşlık kaldırıldı.'); }
     catch (error) { console.error(error); toast(error.message || 'Arkadaşlık kaldırılamadı.', 'error'); }
   }
+  if (action === 'ai-consent-accept') {
+    setAiConsent(); // when storage is unavailable the plan still goes ahead once and we ask again next time
+    settleAiConsent(true);
+    closeModal();
+    return;
+  }
+  if (action === 'ai-consent-decline') { closeModal(); return; }
+  if (action === 'ai-consent-withdraw') {
+    if (clearAiConsent()) toast('AI izni geri çekildi. Bir sonraki AI planında yeniden sorarız.');
+    else toast('İzin geri çekilemedi. Tarayıcı verilerini temizlemeyi dene.', 'error');
+    renderSettings();
+    return;
+  }
   if (action === 'sign-in-google') {
+    if (!signInOptions(appPlatform()).google) return;
     if (!navigator.onLine) { toast('Giriş yapmak için internet bağlantısı gerekiyor.', 'error'); return; }
     const { data, error } = await startGoogleOAuth(location.href);
     if (!error && data?.url && window.Capacitor?.isNativePlatform?.()) {
@@ -1048,12 +1109,18 @@ async function applySession(session, { announce = false } = {}) {
   state.session = session || null;
   const { changed, previousUserId, userId } = userTracker.change(session);
   if (!changed) return;
+  // state.trips still belongs to the previous user here; their trips are about to disappear from view.
+  const previousTrips = state.trips;
   resetUserState();
   renderAll();
   if (!userId) {
     postSignIn.reset();
     await refreshTrips();
-  } else {
+  }
+  // Reminders of the previous account's cloud trips must not keep firing for someone else. After a sign-out the guest
+  // trips left on the device (now in state.trips) keep theirs. Non-blocking; failures are logged by cancelReminders.
+  void cancelReminders(reminderIdsOnUserChange({ previousUserId, userId, previousTrips, shownTrips: userId ? [] : state.trips }));
+  if (userId) {
     if ($('#authModal')?.classList.contains('open')) closeModal($('#authModal'));
     if (state.route === 'trip') showRoute('trips');
     await postSignIn.run(userId, () => runPostSignIn(session, { announce: announce && previousUserId === null }));
@@ -1063,6 +1130,8 @@ async function applySession(session, { announce = false } = {}) {
 
 async function initialize() {
   icons();
+  applySignInOptions();
+  document.addEventListener('roamly:native-ready', applySignInOptions);
   // Supabase holds its auth lock while this callback runs, so defer the work instead of awaiting Supabase inside it.
   supabase.auth.onAuthStateChange((_event, session) => {
     setTimeout(() => { applySession(session, { announce: true }).catch(console.error); }, 0);

@@ -13,3 +13,13 @@ export function orphanedReminderIds(previousTrips = [], nextTrips = []) {
   const wanted = new Set(nextTrips.flatMap(reminderIdsForTrip));
   return [...new Set(previousTrips.flatMap(reminderIdsForTrip))].filter((id) => !wanted.has(id));
 }
+
+// Reminder ids to cancel when the signed-in user changes (sign-out, or a different account signs in).
+// `previousTrips` are the trips the previous account was showing; `shownTrips` are the trips visible now
+// (the guest trips left on this device after a sign-out, none yet when another account signs in).
+// Nothing is cancelled when the previous user was a guest (their trips either move into the new account with the same
+// stop ids or stay on the device) or when the user did not actually change.
+export function reminderIdsOnUserChange({ previousUserId, userId, previousTrips = [], shownTrips = [] } = {}) {
+  if (!previousUserId || previousUserId === userId) return [];
+  return orphanedReminderIds(previousTrips, shownTrips);
+}
