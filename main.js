@@ -24,7 +24,7 @@ import { renderRouteMap } from './src/map.js';
 import { ensureProfile, loadConnections, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
 import { createPostSignInGuard, createUserTracker, PENDING_PLAN_KEY, registerServiceWorker, takePendingPlan } from './src/lifecycle.js';
 import { parseGoogleSavedPlaces } from './src/importers.js';
-import { getTripWeather } from './src/weather.js';
+import { formatTemperature, getTripWeather, hasWeatherData } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
 import { orphanedReminderIds, reminderIdFor, reminderIdsFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsForTrips, reminderIdsOnUserChange } from './src/reminders.js';
@@ -408,9 +408,9 @@ async function renderTripWeather(trip) {
   const center = dayCenter({ stops: trip.days.flatMap((day) => day.stops || []) });
   if (!root || !center) { if (root) root.hidden = true; return; }
   try {
-    const forecast = await getTripWeather({ ...center, startDate: trip.startDate, endDate: trip.endDate });
+    const forecast = (await getTripWeather({ ...center, startDate: trip.startDate, endDate: trip.endDate })).filter(hasWeatherData);
     if (!root.isConnected || activeTrip()?.id !== trip.id || !forecast.length) { root.hidden = true; return; }
-    root.innerHTML = `<span class="eyebrow">HAVA DURUMU</span><h3>Valiz ve rota için kısa bakış</h3><div class="weather-days">${forecast.map((day) => `<span><strong>${formatDate(day.date, { weekday: 'short', day: 'numeric' })}</strong><em>${escapeHtml(day.label)}</em><b>${Number(day.max)}° / ${Number(day.min)}°</b><small>%${Number(day.rain)} yağış</small></span>`).join('')}</div><p>Open-Meteo tahmini · Seyahate yaklaşınca yeniden kontrol et.</p>`;
+    root.innerHTML = `<span class="eyebrow">HAVA DURUMU</span><h3>Valiz ve rota için kısa bakış</h3><div class="weather-days">${forecast.map((day) => `<span><strong>${formatDate(day.date, { weekday: 'short', day: 'numeric' })}</strong>${day.label ? `<em>${escapeHtml(day.label)}</em>` : ''}<b>${escapeHtml(formatTemperature(day.max))} / ${escapeHtml(formatTemperature(day.min))}</b>${day.rain === null ? '' : `<small>%${Number(day.rain)} yağış</small>`}</span>`).join('')}</div><p>Open-Meteo tahmini · Seyahate yaklaşınca yeniden kontrol et.</p>`;
   } catch { if (root.isConnected) root.hidden = true; }
 }
 
