@@ -27,7 +27,7 @@ import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
-import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsForTrips, reminderIdsOnUserChange } from './src/reminders.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsForTrips, reminderIdsOnUserChange } from './src/reminders.js';
 import { canSubmitAccountDeletion, deleteAccount } from './src/account.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
@@ -912,7 +912,7 @@ $('#stopForm').addEventListener('submit', async (event) => {
   if (window.RoamlyNative?.isNative && previousReminder !== stop.reminderAt) {
     const reminderId = reminderIdFor(stop.id);
     try {
-      if (previousReminder) await window.RoamlyNative.cancelTripReminder(reminderId);
+      if (previousReminder) await cancelReminders(reminderIdsFor(stop.id));
       if (stop.reminderAt && new Date(stop.reminderAt).getTime() > Date.now()) {
         await window.RoamlyNative.scheduleTripReminder({ id: reminderId, title: `${stop.time} · ${stop.title}`, body: stop.address || `${trip.destination} planındaki durağın yaklaşıyor.`, at: stop.reminderAt, extra: { tripId: trip.id, dayId: day.id, stopId: stop.id } });
         toast('Durak kaydedildi ve telefon hatırlatıcısı kuruldu.');

@@ -1,10 +1,23 @@
-// Native reminders are keyed by a stable 31-bit id derived from the stop id.
-export const reminderIdFor = (value) => [...String(value)].reduce((hash, char) => Math.imul(31, hash) + char.charCodeAt(0) | 0, 7) >>> 1 || 1;
+// Native reminders are keyed by a stable 31-bit positive id derived from the stop id (FNV-1a over UTF-16 code units).
+export const reminderIdFor = (value) => {
+  let hash = 0x811c9dc5;
+  for (const char of String(value)) {
+    for (let index = 0; index < char.length; index += 1) hash = Math.imul(hash ^ char.charCodeAt(index), 0x01000193);
+  }
+  return (hash & 0x7fffffff) || 1;
+};
+
+// The id scheme before FNV-1a. It dropped the low bit, so distinct stops could share an id. Reminders scheduled by older
+// app versions still carry it, so every cancellation also covers it; scheduling never uses it.
+export const legacyReminderIdFor = (value) => [...String(value)].reduce((hash, char) => Math.imul(31, hash) + char.charCodeAt(0) | 0, 7) >>> 1 || 1;
+
+// Every native id a stop's reminder may be registered under (current first), each once.
+export const reminderIdsFor = (stopId) => [...new Set([reminderIdFor(stopId), legacyReminderIdFor(stopId)])];
 
 const hasReminder = (stop) => Boolean(stop?.id && stop.reminderAt);
 const tripStops = (trip) => (trip?.days || []).flatMap((day) => day?.stops || []);
 
-export const reminderIdsForStops = (stops = []) => stops.filter(hasReminder).map((stop) => reminderIdFor(stop.id));
+export const reminderIdsForStops = (stops = []) => [...new Set(stops.filter(hasReminder).flatMap((stop) => reminderIdsFor(stop.id)))];
 export const reminderIdsForTrip = (trip) => reminderIdsForStops(tripStops(trip));
 // Every reminder of every trip, each id once (account deletion cancels all of them).
 export const reminderIdsForTrips = (trips = []) => [...new Set(trips.flatMap(reminderIdsForTrip))];
