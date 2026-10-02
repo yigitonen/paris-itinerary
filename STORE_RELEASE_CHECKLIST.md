@@ -11,7 +11,9 @@
 
 ## Store copy
 
-**Subtitle (App Store):** Seyahatini kendi ritminde planla
+The submission pack in [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md) holds the full listing drafts (Turkish and English, with character counts checked by `node scripts/check-store-listing.mjs`), the App Privacy and Data safety answers, content-rating answers, App Review notes, the permission list and the screenshot plan. Where it differs from the lines below, the pack wins; its open questions are marked `TODO(owner)`.
+
+**Subtitle (App Store):** Seyahatini kendi ritminde planla (32 characters, over the 30 limit; the pack proposes "Kendi ritminde seyahat planı")
 
 **Short description (Google Play):** Rotanı planla; günlerini, bütçeni ve anılarını tek yerde tut.
 
@@ -47,8 +49,8 @@
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.
 - [ ] Replace temporary signing with the production keystore and distribution certificate.
-- [ ] Complete Apple App Privacy and Google Play Data Safety forms using `privacy.html` as the source of truth.
-- [ ] Capture App Store and Play Store screenshots from a physical device or simulator.
+- [ ] Complete Apple App Privacy and Google Play Data Safety forms using `privacy.html` as the source of truth; draft answers are in sections 3 and 4 of [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md).
+- [ ] Capture App Store and Play Store screenshots from a physical device or simulator (plan, sizes and `scripts/store-screenshots.mjs` in section 8 of [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md)).
 - [ ] Test notifications, sharing, deep links, VoiceOver, and TalkBack on physical devices.
 - [ ] Archive a signed iOS build and create an Android App Bundle (`.aab`).
 
