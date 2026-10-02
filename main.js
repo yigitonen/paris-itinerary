@@ -16,6 +16,7 @@ import {
   supabase
 } from './src/repository.js';
 import { generateTrip } from './src/planner.js';
+import { clearAiConsent, getAiConsent, needsAiConsent, setAiConsent } from './src/ai-consent.js';
 import { createPlacesClient, debounce, NEARBY_CATEGORIES, placeSearchMessage } from './src/places.js';
 import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
 import { renderRouteMap } from './src/map.js';
@@ -137,6 +138,7 @@ function openModal(id) {
 
 function closeModal(modal = $('.modal.open'), restoreFocus = true) {
   if (!modal) return;
+  if (modal.id === 'aiConsentModal') settleAiConsent(false); // closing without choosing counts as declining
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
   modal.inert = true;
@@ -147,6 +149,21 @@ function closeModal(modal = $('.modal.open'), restoreFocus = true) {
     modalReturnFocus = null;
     setTimeout(() => target?.focus(), 0);
   }
+}
+
+// Resolves true/false once the person answers the AI consent dialog; closing it any other way resolves false.
+let aiConsentResolver = null;
+function settleAiConsent(accepted) {
+  const resolve = aiConsentResolver;
+  aiConsentResolver = null;
+  resolve?.(accepted);
+}
+function requestAiConsent() {
+  settleAiConsent(false);
+  return new Promise((resolve) => {
+    aiConsentResolver = resolve;
+    openModal('#aiConsentModal');
+  });
 }
 
 function setLoading(open) {
@@ -275,6 +292,11 @@ function renderSettings() {
   const user = state.session?.user;
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
   $('#accountSettings').innerHTML = user ? `<span class="settings-icon"><i data-lucide="cloud-check"></i></span><div><div class="account-profile"><span class="account-avatar">${escapeHtml((name || 'R').slice(0,2).toLocaleUpperCase('tr-TR'))}</span><div><strong>${escapeHtml(name || 'Roamly hesabı')}</strong><small>${escapeHtml(user.email || '')} · senkron açık</small></div></div><p>Seyahatlerin Supabase üzerinde yalnızca hesabın tarafından okunabilir ve düzenlenebilir.</p><button class="secondary-button" data-action="sign-out">Çıkış yap</button></div>` : `<span class="settings-icon"><i data-lucide="cloud"></i></span><div><h2>Bulut senkronu</h2><p>Planlarını bu cihazın dışına taşı, AI planlama kullan ve telefonunda kaldığın yerden devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
+  const consent = needsAiConsent() ? null : getAiConsent();
+  const consentDate = consent ? formatDateTime(consent.acceptedAt) : '';
+  $('#aiConsentSettings').innerHTML = `<span class="settings-icon peach"><i data-lucide="sparkles"></i></span><div><h2>AI planlama izni</h2>${consent
+    ? `<p>İzin verildi${consentDate ? ` · ${escapeHtml(consentDate)}` : ''}. AI planı isterken şehir, tarihler, tercihlerin ve notun Roamly’nin sunucusu üzerinden Google Gemini’ye gönderilir. İzni geri çekersen sonraki AI planında yeniden sorarız.</p><button class="secondary-button" data-action="ai-consent-withdraw">İzni geri çek</button>`
+    : `<p>Henüz izin vermedin. İlk AI planı isteğinde neyin Google Gemini’ye gönderileceğini gösterip sana soracağız. Boş planlar hiçbir şey göndermez.</p>`}</div>`;
   icons();
 }
 
@@ -485,6 +507,13 @@ async function runPlanner(input) {
     sessionStorage.setItem('roamly-pending-plan', JSON.stringify(input));
     openModal('#authModal');
     toast('AI planlama için önce hesabınla devam et.');
+    return;
+  }
+  // Nothing leaves the device for Gemini until the person has agreed to exactly what is sent.
+  if (needsAiConsent() && !await requestAiConsent()) {
+    fillPlanner(input);
+    openModal('#plannerModal');
+    toast('AI planı için izin vermedin, hiçbir şey gönderilmedi. İstersen boş planla devam edebilirsin.');
     return;
   }
   closeModal();
@@ -763,6 +792,19 @@ document.addEventListener('click', async (event) => {
     if (!window.confirm('Bu arkadaşlığı kaldırmak istiyor musun?')) return;
     try { await removeConnection(control.dataset.connectionId, state.session); await renderFriends(); toast('Arkadaşlık kaldırıldı.'); }
     catch (error) { console.error(error); toast(error.message || 'Arkadaşlık kaldırılamadı.', 'error'); }
+  }
+  if (action === 'ai-consent-accept') {
+    setAiConsent(); // when storage is unavailable the plan still goes ahead once and we ask again next time
+    settleAiConsent(true);
+    closeModal();
+    return;
+  }
+  if (action === 'ai-consent-decline') { closeModal(); return; }
+  if (action === 'ai-consent-withdraw') {
+    if (clearAiConsent()) toast('AI izni geri çekildi. Bir sonraki AI planında yeniden sorarız.');
+    else toast('İzin geri çekilemedi. Tarayıcı verilerini temizlemeyi dene.', 'error');
+    renderSettings();
+    return;
   }
   if (action === 'sign-in-google') {
     if (!navigator.onLine) { toast('Giriş yapmak için internet bağlantısı gerekiyor.', 'error'); return; }

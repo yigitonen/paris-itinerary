@@ -53,5 +53,5 @@
 - Photos/camera: not accessed; the app requests no camera or photo-library permission.
 - User content: trips, journal, budget, and memories; device-local in guest mode and private cloud storage after sign-in.
 - Contact info: email for account sync or a Locals early-access request.
-- AI input: the trip brief is sent through Roamly's protected backend to Google Gemini only when the user requests an AI plan. On Google's free tier, submitted content may be used to improve Google products.
+- AI input: city, start date, day count, style, pace and the optional note are sent through Roamly's protected backend to Google Gemini only when the user requests an AI plan, and only after an in-app consent dialog (versioned, stored on the device, withdrawable in Settings; declining sends nothing). Retention and product-improvement use depend on Google's Gemini API terms for the tier in use; re-check them before declaring Data Safety answers.
 - Tracking/advertising: none.
