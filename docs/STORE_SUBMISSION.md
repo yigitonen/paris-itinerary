@@ -16,13 +16,13 @@ node scripts/check-store-listing.mjs
 
 | Topic | What the code does | Where |
 | --- | --- | --- |
-| Modes | Guest mode needs no account: trips, journal and budget live in `localStorage` (`roamly-guest-v1`), seeded with one example trip (Roma). Signing in moves them to Supabase. | `src/repository.js`, `src/data.js` |
+| Modes | Guest mode needs no account: trips, journal and budget live in `localStorage` (`roamly-guest-v1`), seeded with one example trip (Roma) that starts 14 days after the first launch, so it always reads "YAKLAŞIYOR" for a new guest (an example already saved on a device keeps its dates). Signing in moves them to Supabase. | `src/repository.js`, `src/data.js` |
 | Sign-in | Passwordless: e-mail link (PKCE) everywhere, Google OAuth on web and Android. Native iOS hides Google (guideline 4.8) until Sign in with Apple exists. Native callback `roamly://localhost/`. | `src/auth-options.js`, `src/repository.js` |
 | AI plans | Signed-in only. After a versioned consent dialog the Edge Function `plan-trip` sends city, start date, day count (1–7), style, pace and the optional note to Google Gemini (model `gemini-3.1-flash-lite`, Google Maps grounding). No e-mail or user id is put in the prompt. Limits per user: 3 successful plans per rolling 24 h, 10 attempts, 1 per minute, 1 at a time; 200 plans per day for everyone. | `supabase/functions/plan-trip`, `src/ai-consent.js`, `supabase/functions/_shared/quota.js` |
 | Place search | Signed-in only. Edge Function `places` sends the typed text (plus the trip city), or the coordinates of the day's existing stops, to Google Places (New). 120 successful calls per user per 24 h. | `supabase/functions/places`, `src/places.js` |
 | Map and weather | Leaflet loads OpenStreetMap tiles directly from `tile.openstreetmap.org`; Open-Meteo is called directly with the coordinates of the trip's stops and its dates. Neither call carries an account id. | `src/map.js`, `src/weather.js` |
 | Reminders | Optional per stop. Native only: local notifications; the OS permission prompt appears the first time a reminder is saved. | `native.js` (`scheduleTripReminder`), `main.js` |
-| Social | "Arkadaşlar": signed-in users get a `profiles` row (handle, display name, avatar URL), can search other discoverable profiles and send, accept, decline or remove friend requests. No messaging, no shared trips, no feed. | `src/social.js`, `supabase/migrations/20260804200454_roamly_social_graph.sql` |
+| Social | "Arkadaşlar": signed-in users get a `profiles` row (handle, display name, avatar URL), can search other discoverable profiles (Ayarlar → Profil görünürlüğü turns this off for the user's own profile) and send, accept, decline or remove friend requests. No messaging, no shared trips, no feed. | `src/social.js`, `supabase/migrations/20260804200454_roamly_social_graph.sql` |
 | Sharing | "Paylaş" opens the OS share sheet with a text recap (title, dates, day and stop counts, summary). Nothing is uploaded; there are no public trip pages. | `main.js` (`share-trip`), `src/sharing.js` |
 | Locals | Pre-launch waitlist (e-mail, city, note) via RPC `join_locals_waitlist`; works for guests too. No marketplace, no payments. | `main.js`, `supabase/migrations/20261002120000_waitlist_join_rpc.sql` |
 | External links | Opened in the in-app browser on native (`@capacitor/browser`): Google Maps place and route links, TikTok search links, and the Google Maps source links Gemini returns. There is no address bar. | `native.js`, `src/itinerary.js` |
@@ -200,7 +200,7 @@ The first release of Roamly.
 | Seller / developer name | TODO(owner) |
 | Support e-mail / review contact | TODO(owner) |
 | Sign-in required for review? | No (guest mode); account-only features need a demo mailbox, see section 6 |
-| Export compliance | The app only uses HTTPS/TLS. `Info.plist` has no `ITSAppUsesNonExemptEncryption` key, so App Store Connect asks on every upload. Add `<key>ITSAppUsesNonExemptEncryption</key><false/>` after confirming with your own legal reading (standard-encryption exemption). |
+| Export compliance | The app only uses HTTPS/TLS through the OS. `Info.plist` now carries `<key>ITSAppUsesNonExemptEncryption</key><false/>`, so App Store Connect does not ask on every upload. TODO(owner): confirm with your own legal reading (standard-encryption exemption). |
 
 ## 2. Google Play listing draft
 
@@ -386,7 +386,7 @@ Users never see other people's trips or journals.
 **User-generated content, checked in `src/social.js`, `src/sharing.js`, the social-graph migration:**
 
 - Journals, trips, budgets: private to the owner (row-level security `owner_id = auth.uid()`); never visible to friends.
-- Friends: other signed-in users can find a profile by handle or display name (`discoverable` defaults to true and the app has no switch to change it)
+- Friends: other signed-in users can find a profile by handle or display name unless the user turned off "Profil görünürlüğü" in Ayarlar (`discoverable`, default true); `privacy.html` section "Profil ve arkadaşlar" describes it
   and send a request. A profile shows display name, handle and avatar URL only. There is no messaging, no comments, no shared trips,
   no public profile page. "Paylaş" is the OS share sheet with plain text.
 - The only user-authored text other users can see is therefore the display name (derived, not freely edited in the app) and handle.
@@ -471,7 +471,7 @@ The merged manifest was derived from the sources, not from a built APK (no Andro
 - `Info.plist` has no `NS…UsageDescription` key at all: nothing in the app needs camera, photos, location, microphone, contacts, Bluetooth, Face ID or tracking.
 - Local notifications use the system prompt (no `Info.plist` key, no entitlement, no background mode). Shown when the first reminder is saved.
 - URL scheme `roamly` (`CFBundleURLTypes`) for the sign-in callback.
-- No `PrivacyInfo.xcprivacy` in the app target (Capacitor and CapacitorCordova ship their own). TODO(owner): run *Product → Archive → Generate Privacy Report* in Xcode and add an app-level manifest if the report lists required-reason APIs.
+- `ios/App/App/PrivacyInfo.xcprivacy` is in the App target (Copy Bundle Resources): no tracking, no tracking domains, the collected data types of section 3, and an empty `NSPrivacyAccessedAPITypes`. Checked against `@capacitor/ios` 8.4.2 and the nine plugins: none uses UserDefaults (Capacitor 8's `KeyValueStore` is file based), file timestamps, boot time, disk space or the active keyboard list, and Capacitor/CapacitorCordova ship their own empty manifests. `Info.plist` has `ITSAppUsesNonExemptEncryption = false`. TODO(owner): run *Product → Archive → Generate Privacy Report* once in Xcode and confirm it lists no missing required-reason API (add a `UserDefaults`/`CA92.1` entry if a plugin that needs it is added later).
 - Devices: `TARGETED_DEVICE_FAMILY = "1,2"` (iPhone and iPad), portrait only on iPhone, all orientations on iPad.
 
 ## 8. Screenshot plan
@@ -488,10 +488,7 @@ The merged manifest was derived from the sources, not from a built APK (no Andro
 | Google Play | App icon | 512 × 512 PNG | From `icons/` / `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` (1024 px) |
 | Google Play | 7" / 10" tablet | optional | Needed only to be featured on large screens |
 
-**iPad decision (TODO(owner)).** Either set `TARGETED_DEVICE_FAMILY = 1` (iPhone only) for 1.0 and skip iPad screenshots, or
-ship iPad and shoot 2048 × 2732 (`PROFILES=ipad node scripts/store-screenshots.mjs`). The iPad shots made here at 1024 pt width are not store-ready:
-at that width the desktop layout is cramped, the stop tool buttons overflow the right edge of each stop card (`.stop-tools`), and cards wrap text to a few words per line.
-Recommend iPhone-only for 1.0 unless you fix the tablet layout first.
+**iPad.** The project ships for iPad (`TARGETED_DEVICE_FAMILY = "1,2"`) and the trip detail layout was fixed for 768–1366 pt widths (stop cards no longer overflow; checked with Playwright). If you ship iPad, shoot 2048 × 2732 (`PROFILES=ipad node scripts/store-screenshots.mjs`), and look at them on a real iPad or simulator first. Alternatively set `TARGETED_DEVICE_FAMILY = 1` (iPhone only) and skip iPad screenshots. TODO(owner): confirm iPad for 1.0.
 
 ### 8.2 Shot list (eight screens, guest mode, example trip)
 
@@ -521,7 +518,7 @@ OUT_DIR=./store-screenshots node scripts/store-screenshots.mjs   # PORT, PROFILE
 ```
 
 - It drives the real UI in guest mode (no localStorage injection, no faked responses). The one typed-in item is the journal note for shot 7.
-- **The example trip is dated 12–15 August 2026.** On a device whose date is after that, the app labels it "TAMAMLANDI" (finding F3). The script therefore starts the browser clock a week before the trip begins (`SHOT_TODAY=real` disables this), so the screenshots read "YAKLAŞIYOR".
+- **The example trip starts 14 days after the date the app first runs** (`createDemoTrip`), so it reads "YAKLAŞIYOR" on any date. The script still starts the browser clock a week before the trip begins (`SHOT_TODAY=real` disables this), which keeps the badge and day dates stable.
 - Each shot is checked before it is saved: no toast, no loading overlay, no half-open modal, no horizontal overflow, no failed sync label, exact output size.
 - Run on 2 October 2026 in a sandbox behind a TLS-inspecting proxy: OpenStreetMap tiles and Open-Meteo loaded for real (the script pins the proxy's CA instead of ignoring certificate errors). Open-Meteo is rate-limited and flaky from shared addresses; when it fails or answers with empty values the script says so and shot 5 starts at the budget card. Because the forecast is requested for August dates relative to the real date, even a successful answer is not a true "next week" forecast. **Re-shoot on a real network and ideally on a simulator/device** (real status bar, safe areas, home indicator), and check shot 7: the Anılar hero image is a fixed Lisbon photo (`styles.css`, `.memory-hero`) over a note about Rome.
 - The browser render has no status bar; App Store Connect accepts it, but simulator captures look more authentic.
@@ -530,16 +527,11 @@ OUT_DIR=./store-screenshots node scripts/store-screenshots.mjs   # PORT, PROFILE
 
 | # | Finding | Where | Suggested fix |
 | --- | --- | --- | --- |
-| F1 | `privacy.html` says directions open in "Google Maps veya Apple Maps". The app only builds Google Maps URLs, and it also links to TikTok search (`tiktokSearchUrl`), which the policy never mentions. | `privacy.html` "Üçüncü taraf hizmetleri"; `src/itinerary.js`, `main.js` | Drop "Apple Maps", name Google Maps and TikTok search as the services the links open |
-| F2 | The policy does not say that signed-in users get a profile that every other signed-in user can find: `discoverable` defaults to `true`, the app has no setting for it, the display name falls back to the e-mail prefix, the handle is built from the same prefix plus six characters of the user id, and a Google avatar URL is stored. There is also no report or block action for friend requests (App Store guideline 1.2 can apply). | `src/social.js` `profileFromUser`; migration `20260804200454_roamly_social_graph.sql`; `privacy.html` | Disclose it in the policy (and the privacy label, section 3), or add an opt-out and random handles before launch; consider a block/report action |
-| F3 | The example trip is hard-coded to 12–15 August 2026 (`createDemoTrip`). From 16 August on every new guest sees it as "TAMAMLANDI", and App Review will in October. | `src/data.js` | Make the example's dates relative to today |
+| F2 | `privacy.html` now discloses the friend profile (done) and Ayarlar has an opt-out (done). Still open: the handle is built from the e-mail prefix plus six characters of the user id, and the display name falls back to the e-mail prefix, so a searchable profile can expose it; there is no report or block action for friend requests (App Store guideline 1.2 can apply). | `src/social.js` `profileFromUser`; `privacy.html` | Consider random handles and a block/report action before launch |
 | F4 | `STORE_RELEASE_CHECKLIST.md` subtitle "Seyahatini kendi ritminde planla" is 32 characters; the limit is 30. | checklist "Store copy" | Use section 1.1 |
 | F5 | The support page's only contact is a *public* GitHub issue form (`github.com/yigitonen/paris-itinerary/issues/new`, which needs a GitHub account), and `privacy.html` sends privacy requests to it. Apple expects a working support contact; privacy requests should not be public. | `support.html`, `privacy.html` | Add a support e-mail address (TODO(owner)) to both pages and the store fields |
 | F6 | The checklist item "After wiring the button, mention in-app deletion in `privacy.html`" is stale: `privacy.html` already describes the in-app "Hesabı sil" button. | checklist | Tick it |
 | F7 | The checklist lists "grants" under Friends; the code has friend connections only, no trip-sharing grants. | checklist "Completed" | Reword |
-| F8 | `Info.plist` lacks `ITSAppUsesNonExemptEncryption` and the app target has no privacy manifest. | `ios/App/App/Info.plist` | See sections 1.3 and 7 |
-| F9 | `weather.js` turns missing values from Open-Meteo into "0° / 0°" and "%0 yağış" instead of hiding the day. | `src/weather.js` `Math.round(undefined/null)` | Skip days without values |
-| F10 | The iPad layout at 1024 pt overflows the stop cards, yet the project targets iPad. | `styles.css`, `ios/App/App.xcodeproj` | See 8.1 |
 | F11 | Android reminders use inexact alarms on 12+ without the exact-alarm permission, so "bildirim zamanında gelir" cannot be promised. | `@capacitor/local-notifications` | Keep the claim out of the listing (it is) |
 
 ## 10. TODO(owner) list
@@ -552,7 +544,7 @@ OUT_DIR=./store-screenshots node scripts/store-screenshots.mjs   # PORT, PROFILE
 6. Decide the English listing (UI is Turkish only), the Locals waitlist purpose on the label (section 3), and whether to declare Name and Search History.
 7. Confirm the Gemini API tier and its data terms; then fix the "Shared" cells of the Data safety form (section 4).
 8. Age rating answers and Target audience (section 5), including the TikTok-link judgement.
-9. iPad: ship or drop (section 8.1); feature graphic; re-shoot screenshots on a real network or device with captions.
-10. Decide on F2 (profile visibility, block/report) and F3 (example trip dates) before submission.
-11. `ITSAppUsesNonExemptEncryption`, Xcode privacy report, Android merged-manifest check (section 7).
+9. iPad: confirm shipping iPad (section 8.1, layout is fixed); feature graphic; re-shoot screenshots on a real network or device with captions.
+10. Decide on the open part of F2 (random handles, block/report).
+11. Xcode privacy report (section 7) and confirm the export-compliance answer; Android merged-manifest check (section 7).
 12. Deploy the pending migrations and the `delete-account` function, and add the redirect URLs, before review (checklist "Account deletion").
