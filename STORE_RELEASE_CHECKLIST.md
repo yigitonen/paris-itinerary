@@ -60,14 +60,14 @@ Built:
 - [x] Migration `20261002090000_account_deletion.sql`: `locals_waitlist.user_id` now cascades; `public.delete_account_data(uuid)` (service role only) removes waitlist rows by user id and by the account e-mail.
 - [x] Edge Function `delete-account` (`POST {"confirm":"DELETE"}` with the user's JWT): cleanup, then `auth.admin.deleteUser`. All other user tables cascade from `auth.users`; there are no Storage objects.
 - [x] Public page `/delete-account` (`delete-account.html`): e-mail link or Google sign-in, typed confirmation (SİL / DELETE), then deletion. Linked from the privacy policy and the support page.
-- [x] Client helper `src/account.js` (`deleteAccount`, `clearLocalAccountData`) with unit tests, ready for the in-app UI.
+- [x] Client helper `src/account.js` (`deleteAccount`, `clearLocalAccountData`) with unit tests; used by the in-app flow.
 
 Still to do before submission:
 - [ ] Apply the migration and deploy the function: `supabase db push` and `supabase functions deploy delete-account` (JWT verification stays on).
 - [ ] Add `https://roamly-travel.yigitonen.chatgpt.site/delete-account` to the Supabase Auth redirect URL allowlist (the e-mail link and Google sign-in return to it).
-- [ ] **Wire the in-app "Hesabı sil" button** (Settings) to `deleteAccount(supabase)` from `src/account.js`. It is not connected yet, so in-app deletion is NOT available in the current build; do not submit to the App Store until it is.
+- [x] In-app "Hesabı sil" (Ayarlar, signed-in only, hidden for guests): confirmation modal with the list of deleted data, "Önce yedek indir", typed SİL, online check, reminders cancelled first, then `deleteAccount(supabase)` and return to guest mode. Implemented; still needs verification on a real iOS and Android device (see the smoke test below).
 - [ ] After wiring the button, mention in-app deletion in `privacy.html` (it currently describes only the web page and the support fallback).
-- [ ] Smoke test with a throwaway account: delete from the web page and from the app, confirm the user, trips, profile and waitlist rows are gone and a second request returns 401.
+- [ ] Smoke test with a throwaway account: delete from the web page and from the app (signed-in Ayarlar > Hesabı sil; also check native reminders are gone and guest trips remain), confirm the user, trips, profile and waitlist rows are gone and a second request returns 401.
 - [ ] Enter the account deletion URL in Google Play Console (Data safety > Data deletion) and confirm the stated retention of provider backups.
 
 ## Data declarations

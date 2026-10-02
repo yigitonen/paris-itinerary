@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   AccountDeletionError,
   accountDeletionError,
+  canSubmitAccountDeletion,
   clearLocalAccountData,
   DELETE_ACCOUNT_CONFIRMATION,
   DELETE_ACCOUNT_FUNCTION,
@@ -162,4 +163,13 @@ test('clearLocalAccountData never throws, even with blocked or missing storage',
 test('isDeleteConfirmation accepts SİL and DELETE in any case and nothing else', () => {
   for (const value of ['SİL', 'sil', 'Sil', 'SIL', ' sil ', 'DELETE', 'delete', 'Delete']) assert.equal(isDeleteConfirmation(value), true, value);
   for (const value of ['', 'sı', 'si', 'sill', 'deletee', 'evet', null, undefined, 0]) assert.equal(isDeleteConfirmation(value), false, String(value));
+});
+
+test('the confirm button needs the typed word and no request in flight', () => {
+  assert.equal(canSubmitAccountDeletion({ text: 'SİL' }), true);
+  assert.equal(canSubmitAccountDeletion({ text: ' sil ', busy: false }), true);
+  assert.equal(canSubmitAccountDeletion({ text: '' }), false);
+  assert.equal(canSubmitAccountDeletion({ text: 'sill' }), false);
+  assert.equal(canSubmitAccountDeletion({ text: 'SİL', busy: true }), false);
+  assert.equal(canSubmitAccountDeletion(), false);
 });

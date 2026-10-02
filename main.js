@@ -27,7 +27,8 @@ import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
-import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsOnUserChange } from './src/reminders.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsForTrips, reminderIdsOnUserChange } from './src/reminders.js';
+import { canSubmitAccountDeletion, deleteAccount } from './src/account.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
 
@@ -139,6 +140,7 @@ function openModal(id) {
 
 function closeModal(modal = $('.modal.open'), restoreFocus = true) {
   if (!modal) return;
+  if (modal.id === 'deleteAccountModal' && deletingAccount) return; // the request is in flight; the outcome decides what happens next
   if (modal.id === 'aiConsentModal') settleAiConsent(false); // closing without choosing counts as declining
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
@@ -310,6 +312,7 @@ function renderSettings() {
   const user = state.session?.user;
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
   $('#accountSettings').innerHTML = user ? `<span class="settings-icon"><i data-lucide="cloud-check"></i></span><div><div class="account-profile"><span class="account-avatar">${escapeHtml((name || 'R').slice(0,2).toLocaleUpperCase('tr-TR'))}</span><div><strong>${escapeHtml(name || 'Roamly hesabı')}</strong><small>${escapeHtml(user.email || '')} · senkron açık</small></div></div><p>Seyahatlerin Supabase üzerinde yalnızca hesabın tarafından okunabilir ve düzenlenebilir.</p><button class="secondary-button" data-action="sign-out">Çıkış yap</button></div>` : `<span class="settings-icon"><i data-lucide="cloud"></i></span><div><h2>Bulut senkronu</h2><p>Planlarını bu cihazın dışına taşı, AI planlama kullan ve telefonunda kaldığın yerden devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
+  $('#deleteAccountSettings').classList.toggle('hidden', !user); // guests have no account; their trips stay on this device
   const consent = needsAiConsent() ? null : getAiConsent();
   const consentDate = consent ? formatDateTime(consent.acceptedAt) : '';
   $('#aiConsentSettings').innerHTML = `<span class="settings-icon peach"><i data-lucide="sparkles"></i></span><div><h2>AI planlama izni</h2>${consent
@@ -836,10 +839,13 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'sign-out') {
     await supabase.auth.signOut();
-    sessionStorage.removeItem(PENDING_PLAN_KEY);
-    await applySession(null);
-    showRoute('home');
+    await returnToGuest();
     toast('Çıkış yapıldı. Misafir modundasın.');
+  }
+  if (action === 'open-delete-account') {
+    if (!state.session?.user) return;
+    openDeleteAccountModal();
+    return;
   }
   if (control.dataset.deleteExpense) {
     const trip = activeTrip();
@@ -1127,6 +1133,59 @@ async function applySession(session, { announce = false } = {}) {
   }
   if (state.route === 'friends') void renderFriends();
 }
+
+// After the session is gone (sign-out or account deletion): drop the account's state, show the guest trips left on this device.
+async function returnToGuest() {
+  sessionStorage.removeItem(PENDING_PLAN_KEY);
+  await applySession(null);
+  showRoute('home');
+}
+
+let deletingAccount = false;
+
+function syncDeleteAccountForm() {
+  const button = $('#deleteAccountConfirm');
+  button.disabled = !canSubmitAccountDeletion({ text: $('#deleteAccountInput').value, busy: deletingAccount });
+  button.textContent = deletingAccount ? 'Siliniyor…' : 'Hesabımı kalıcı olarak sil';
+  button.setAttribute('aria-busy', String(deletingAccount));
+  $('#deleteAccountInput').disabled = deletingAccount;
+}
+
+function openDeleteAccountModal() {
+  $('#deleteAccountEmail').textContent = state.session?.user?.email || 'Bu hesap';
+  $('#deleteAccountInput').value = '';
+  syncDeleteAccountForm();
+  openModal('#deleteAccountModal');
+}
+
+$('#deleteAccountInput').addEventListener('input', syncDeleteAccountForm);
+
+$('#deleteAccountForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (deletingAccount || !canSubmitAccountDeletion({ text: $('#deleteAccountInput').value })) return;
+  if (!state.session?.user) { toast('Hesabı silmek için giriş yapman gerekiyor.', 'error'); return; }
+  if (!navigator.onLine) { toast('Hesabı silmek için internet bağlantısı gerekiyor.', 'error'); return; }
+  deletingAccount = true;
+  syncDeleteAccountForm();
+  try {
+    // Cancel the account's native reminders first; a failure here must not stop the deletion.
+    try { await cancelReminders(reminderIdsForTrips(state.trips)); } catch (error) { console.error(error); }
+    try {
+      await deleteAccount(supabase);
+    } catch (error) {
+      console.error(error);
+      toast(error?.message || 'Hesabın silinemedi. Lütfen tekrar dene.', 'error');
+      return;
+    }
+    deletingAccount = false;
+    closeModal($('#deleteAccountModal'));
+    await returnToGuest();
+    toast('Hesabın ve bulut verilerin silindi.');
+  } finally {
+    deletingAccount = false;
+    syncDeleteAccountForm();
+  }
+});
 
 async function initialize() {
   icons();
