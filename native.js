@@ -75,9 +75,9 @@ async function bootNative() {
   };
   document.dispatchEvent(new CustomEvent('roamly:native-ready'));
 
-  await StatusBar.setStyle({ style: Style.Dark });
+  await StatusBar.setStyle({ style: Style.Light });
   if (Capacitor.getPlatform() === 'android') {
-    await StatusBar.setBackgroundColor({ color: '#f6f7f2' });
+    await StatusBar.setBackgroundColor({ color: '#f4f1e9' });
   }
   await SplashScreen.hide();
 
