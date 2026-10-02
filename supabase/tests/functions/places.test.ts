@@ -225,3 +225,46 @@ Deno.test("upstream error details are not leaked to the client", async () => {
   });
   assert(!JSON.stringify(r.body).includes("SECRET-INTERNAL-DETAIL"));
 });
+
+// --- upstream failures map to meaningful client responses ---------------------------------------
+// 429 stays reserved for the user's own quota; Google's own 429 must not look like it.
+
+const mappings: Array<{ name: string; reply: any; status: number; code: string }> = [
+  { name: "Google 429", reply: { status: 429, body: { error: { message: "Quota exceeded for project 123" } } }, status: 503, code: "provider_rate_limited" },
+  { name: "Google 401", reply: { status: 401, body: { error: { message: "API keys are not supported" } } }, status: 503, code: "provider_unavailable" },
+  { name: "Google 403 (key rejected or API disabled)", reply: { status: 403, body: { error: { message: "Places API has not been used in project 123" } } }, status: 503, code: "provider_unavailable" },
+  { name: "Google 504", reply: { status: 504, body: {} }, status: 504, code: "provider_timeout" },
+  { name: "request timeout (abort)", reply: new DOMException("aborted", "AbortError"), status: 504, code: "provider_timeout" },
+  { name: "network failure", reply: new TypeError("fetch failed"), status: 504, code: "provider_timeout" },
+  { name: "Google 500", reply: { status: 500, body: {} }, status: 502, code: "provider_error" },
+  { name: "Google 503", reply: { status: 503, body: {} }, status: 502, code: "provider_error" },
+  { name: "Google 400", reply: { status: 400, body: { error: { message: "Invalid argument" } } }, status: 502, code: "provider_error" }
+];
+
+for (const mapping of mappings) {
+  Deno.test(`${mapping.name} reaches the client as ${mapping.status} ${mapping.code}`, async () => {
+    for (const body of [autocomplete, details, nearby]) {
+      const r = await go(body, (b) => {
+        b.provider = () => mapping.reply;
+        b.reserve = () => ({ body: { allowed: true, reservation_id: "res-4" } });
+      });
+      assertEquals(r.status, mapping.status, body.action);
+      assertEquals(r.body.code, mapping.code, body.action);
+      assertEquals(Object.keys(r.body).sort(), ["code", "error"], "only a fixed message and code are exposed");
+      assertEquals(r.backend.finishCalls.length, 1, `${body.action}: settled exactly once`);
+      assertEquals(r.backend.finishCalls[0].body.p_succeeded, false);
+    }
+  });
+}
+
+Deno.test("an upstream 429 is a 503 provider_rate_limited, never the user-quota 429, and leaks nothing", async () => {
+  const r = await go(details, (b) => {
+    b.provider = () => ({ status: 429, body: { error: { message: "SECRET-INTERNAL-DETAIL project 123 key=abc" } } });
+  });
+  assertEquals(r.status, 503);
+  assertEquals(r.response.headers.get("Retry-After"), null);
+  assert(!JSON.stringify(r.body).includes("SECRET-INTERNAL-DETAIL"));
+  for (const quotaCode of ["global_budget", "daily_limit", "cooldown", "in_progress", "attempt_limit"]) {
+    assert(r.body.code !== quotaCode);
+  }
+});

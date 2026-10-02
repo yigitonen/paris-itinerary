@@ -129,7 +129,9 @@ export class PlaceSearchError extends Error {
 const SEARCH_MESSAGES = Object.freeze({
   signed_out: 'Yer aramak için hesabınla giriş yap. Durağı elle de yazabilirsin.',
   unavailable: 'Yer arama şu anda kullanılamıyor. Durağı elle yazabilirsin.',
-  quota: 'Bugünkü yer arama sınırına ulaşıldı. Durağı elle yazabilirsin.'
+  quota: 'Bugünkü yer arama sınırına ulaşıldı. Durağı elle yazabilirsin.',
+  busy: 'Yer arama şu anda çok yoğun. Biraz sonra yeniden dene veya durağı elle yaz.',
+  timeout: 'Yer arama zaman aşımına uğradı. Yeniden dene veya durağı elle yaz.'
 });
 
 export function placeSearchMessage(error) {
@@ -137,10 +139,31 @@ export function placeSearchMessage(error) {
   return SEARCH_MESSAGES[code] || 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.';
 }
 
-function searchErrorFor(error) {
+// Codes the places function sends in the JSON body of an error response (see supabase/functions/places).
+const PROVIDER_CODES = Object.freeze({
+  provider_rate_limited: 'busy',
+  provider_unavailable: 'unavailable',
+  provider_timeout: 'timeout',
+  provider_error: 'failed'
+});
+
+async function responseCode(response) {
+  try {
+    const body = await response.clone().json();
+    return typeof body?.code === 'string' ? body.code : '';
+  } catch {
+    return '';
+  }
+}
+
+async function searchErrorFor(error) {
   if (error instanceof PlaceSearchError) return error;
   const status = Number(error?.context?.status);
-  const code = status === 401 ? 'signed_out' : status === 429 ? 'quota' : status === 503 ? 'unavailable' : 'failed';
+  // 429 is only ever the user's own quota; upstream provider trouble arrives as 502/503/504 with a code.
+  let code = status === 401 ? 'signed_out' : status === 429 ? 'quota' : status === 503 ? 'unavailable' : status === 504 ? 'timeout' : 'failed';
+  if (status >= 500 && error?.context && typeof error.context.clone === 'function') {
+    code = PROVIDER_CODES[await responseCode(error.context)] || code;
+  }
   return new PlaceSearchError(code, text(error?.message));
 }
 
@@ -161,7 +184,7 @@ export function createPlacesClient({ supabaseClient = supabase, functionName = D
       return extractFunctionPayload(data);
     } catch (error) {
       if (isAbortError(error, signal)) throw error;
-      throw searchErrorFor(error);
+      throw await searchErrorFor(error);
     }
   }
 
