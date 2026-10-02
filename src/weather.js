@@ -1,3 +1,5 @@
+import { hasLocation } from './coords.js';
+
 const descriptions = {
   0: 'Açık', 1: 'Çoğunlukla açık', 2: 'Parçalı bulutlu', 3: 'Kapalı',
   45: 'Sisli', 48: 'Kırağılı sis', 51: 'Hafif çiseleme', 53: 'Çiseleme', 55: 'Yoğun çiseleme',
@@ -8,7 +10,7 @@ const descriptions = {
 export const weatherLabel = (code) => descriptions[Number(code)] || 'Değişken';
 
 export async function getTripWeather({ lat, lng, startDate, endDate, fetchImpl = fetch, signal } = {}) {
-  if (![lat, lng].every((value) => Number.isFinite(Number(value)))) return [];
+  if (!hasLocation({ lat, lng })) return [];
   const params = new URLSearchParams({
     latitude: String(lat), longitude: String(lng), timezone: 'auto', start_date: startDate, end_date: endDate,
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'

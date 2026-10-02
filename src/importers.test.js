@@ -13,6 +13,11 @@ test('rejects entries without a name or coordinates', () => {
   assert.deepEqual(parseGoogleSavedPlaces([{ name: 'No location' }, { latitude: 1, longitude: 2 }]), []);
 });
 
+test('blank coordinate fields are rejected rather than read as 0', () => {
+  assert.deepEqual(parseGoogleSavedPlaces([{ name: 'Blank', latitude: '', longitude: null }, { name: 'Space', latitude: ' ', longitude: ' ' }]), []);
+  assert.equal(parseGoogleSavedPlaces([{ name: 'Equator', latitude: 0, longitude: 0 }]).length, 1);
+});
+
 test('saved places without a Google URL are tagged as saved, not as a map provider', () => {
   const [place] = parseGoogleSavedPlaces([{ name: 'Café', latitude: 1, longitude: 2 }]);
   assert.equal(place.provider, 'saved');

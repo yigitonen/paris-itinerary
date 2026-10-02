@@ -23,6 +23,7 @@ import { ensureProfile, loadConnections, removeConnection, requestConnection, re
 import { createPostSignInGuard, createUserTracker, PENDING_PLAN_KEY, registerServiceWorker, takePendingPlan } from './src/lifecycle.js';
 import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
+import { coordinate, hasLocation } from './src/coords.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
 
@@ -320,7 +321,7 @@ async function renderFriends({ refresh = true } = {}) {
 function stopMapsUrl(stop, trip) {
   const groundedUrl = safeHttpUrl(stop.mapsSourceUrl);
   if (groundedUrl) return groundedUrl;
-  const query = Number.isFinite(stop.lat) && Number.isFinite(stop.lng)
+  const query = hasLocation(stop)
     ? `${stop.lat},${stop.lng}`
     : stop.address || `${stop.title} ${trip.destination}`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
@@ -530,8 +531,8 @@ function openStopForm(dayId, stopId) {
   form.elements.confirmation.value = stop?.confirmation || '';
   form.elements.reminderAt.value = stop?.reminderAt ? String(stop.reminderAt).slice(0, 16) : '';
   form.elements.placeId.value = stop?.placeId || '';
-  form.elements.lat.value = Number.isFinite(Number(stop?.lat)) ? stop.lat : '';
-  form.elements.lng.value = Number.isFinite(Number(stop?.lng)) ? stop.lng : '';
+  form.elements.lat.value = coordinate(stop?.lat) ?? '';
+  form.elements.lng.value = coordinate(stop?.lng) ?? '';
   form.elements.provider.value = stop?.provider || '';
   form.elements.googleMapsUrl.value = stop?.googleMapsUrl || stop?.mapsSourceUrl || '';
   form.elements.rating.value = stop?.rating ?? '';
@@ -803,8 +804,8 @@ $('#stopForm').addEventListener('submit', async (event) => {
     duration: '',
     mealRole: ({ Kahvaltı: 'Breakfast', 'Öğle yemeği': 'Lunch', 'Akşam yemeği': 'Dinner' })[String(data.get('category'))] || 'None',
     placeId: String(data.get('placeId') || ''),
-    lat: data.get('lat') === '' ? null : Number(data.get('lat')),
-    lng: data.get('lng') === '' ? null : Number(data.get('lng')),
+    lat: coordinate(data.get('lat')),
+    lng: coordinate(data.get('lng')),
     provider: String(data.get('provider') || ''),
     googleMapsUrl: String(data.get('googleMapsUrl') || ''),
     mapsSourceUrl: String(data.get('googleMapsUrl') || ''),
