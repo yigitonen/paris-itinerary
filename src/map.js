@@ -1,5 +1,6 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { hasLocation } from './coords.js';
 
 let activeMap;
 
@@ -11,7 +12,7 @@ export function destroyRouteMap() {
 export function renderRouteMap(element, stops = []) {
   destroyRouteMap();
   if (!element) return;
-  const located = stops.filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)));
+  const located = stops.filter(hasLocation);
   if (!located.length) {
     element.innerHTML = '<div class="map-empty"><strong>Harita için bir yer seç.</strong><span>Arama sonucundan eklenen duraklar burada rotaya dönüşür.</span></div>';
     return;

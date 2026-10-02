@@ -507,3 +507,11 @@ fieldset { border: 0; padding: 0; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+.trip-side-card .card-top .icon-button { width: 30px; height: 30px; }
+.trip-side-card .card-top .icon-button svg { width: 14px; }
+.budget-form { display: grid; gap: 10px; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--line); }
+.budget-form input, .budget-form select { min-width: 0; height: 38px; border: 1px solid var(--line); background: white; border-radius: 9px; padding: 0 9px; font-size: 11px; }
+.budget-actions { display: flex; gap: 8px; }
+.budget-actions button { flex: 1; min-height: 38px; }
+.trip-side-card .budget-note { display: flex; align-items: flex-start; gap: 6px; margin: 10px 0 0; color: #836a5f; font-size: 8px; line-height: 1.5; }
+.budget-note svg { width: 12px; flex: 0 0 auto; margin-top: 1px; }

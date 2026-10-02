@@ -1,3 +1,5 @@
+import { coordinate } from './coords.js';
+
 const text = (...values) => values.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
 
 export function parseGoogleSavedPlaces(value) {
@@ -8,11 +10,11 @@ export function parseGoogleSavedPlaces(value) {
     const location = properties.Location || properties.location || {};
     const coordinates = item?.geometry?.coordinates || properties.coordinates || [];
     const name = text(properties.Title, properties.title, properties.name, location['Business Name'], location.name);
-    const lat = Number(properties.latitude ?? location.Latitude ?? coordinates[1]);
-    const lng = Number(properties.longitude ?? location.Longitude ?? coordinates[0]);
+    const lat = coordinate(properties.latitude) ?? coordinate(location.Latitude) ?? coordinate(coordinates[1]);
+    const lng = coordinate(properties.longitude) ?? coordinate(location.Longitude) ?? coordinate(coordinates[0]);
     const address = text(properties.Address, properties.address, location.Address, location.address);
     const googleMapsUrl = text(properties['Google Maps URL'], properties.googleMapsUrl, properties.url, location['Google Maps URL']);
-    if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (!name || lat === null || lng === null) return null;
     const key = `${name.toLocaleLowerCase('tr-TR')}|${lat.toFixed(5)}|${lng.toFixed(5)}`;
     if (seen.has(key)) return null;
     seen.add(key);

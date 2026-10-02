@@ -1,4 +1,5 @@
 import { supabase } from './repository.js';
+import { coordinate } from './coords.js';
 
 const DEFAULT_FUNCTION_NAME = 'places';
 const DEFAULT_LIMIT = 8;
@@ -24,11 +25,7 @@ function isAbortError(error, signal) {
   return signal?.aborted || error?.name === 'AbortError';
 }
 
-function numberOrNull(value) {
-  if (value === '' || value === null || value === undefined) return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
+const numberOrNull = coordinate;
 
 function integerOrNull(value) {
   const number = numberOrNull(value);

@@ -103,6 +103,13 @@ test('a trip deleted online stays deleted after older queued edits flush', withC
   assert.equal(pendingTripSyncCount(session), 0);
 }));
 
+test('stops without coordinates stay null through a cloud save and reload', withCloud(async () => {
+  const stops = [{ id: 's1', title: 'No pin', lat: null, lng: null }, { id: 's2', title: 'Equator', lat: 0, lng: 0 }];
+  await saveTrip({ ...trip('trip-a', 'Coords'), days: [{ id: 'd1', stops }] }, session, []);
+  const [loaded] = await loadTrips(session);
+  assert.deepEqual(loaded.days[0].stops.map(({ lat, lng }) => [lat, lng]), [[null, null], [0, 0]]);
+}));
+
 test('an older queued edit cannot overwrite a newer online save', withCloud(async ({ cloud, setOnline }) => {
   setOnline(false);
   const first = await saveTrip(trip('trip-a', 'Older'), session, []);

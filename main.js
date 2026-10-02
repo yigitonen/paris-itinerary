@@ -23,6 +23,9 @@ import { ensureProfile, loadConnections, removeConnection, requestConnection, re
 import { createPostSignInGuard, createUserTracker, PENDING_PLAN_KEY, registerServiceWorker, takePendingPlan } from './src/lifecycle.js';
 import { parseGoogleSavedPlaces } from './src/importers.js';
 import { getTripWeather } from './src/weather.js';
+import { coordinate, hasLocation } from './src/coords.js';
+import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
+import { orphanedReminderIds, reminderIdFor, reminderIdsForStops, reminderIdsForTrip } from './src/reminders.js';
 import { recapShareOptions } from './src/sharing.js';
 import { BACKUP_MAX_BYTES, backupErrorMessage, parseBackup, serializeBackup, serializeTrip } from './src/backup.js';
 
@@ -32,7 +35,6 @@ const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (char) => (
 const icons = () => window.lucide?.createIcons({ attrs: { 'aria-hidden': 'true' } });
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const uid = () => crypto.randomUUID();
-const reminderIdFor = (value) => [...String(value)].reduce((hash, char) => Math.imul(31, hash) + char.charCodeAt(0) | 0, 7) >>> 1 || 1;
 
 const formatDate = (value, options = { day: 'numeric', month: 'short' }) => {
   const date = new Date(`${value}T12:00:00`);
@@ -46,7 +48,6 @@ const formatRange = (trip) => `${formatDate(trip.startDate)} – ${formatDate(tr
 const dayCountText = (trip) => `${Number(trip.durationDays) || trip.days?.length || 1} gün`;
 // constant asset paths only; CSS url() context, never interpolate trip data here
 const coverUrl = (trip) => Object.hasOwn(COVER_IMAGES, trip.coverKey) ? COVER_IMAGES[trip.coverKey] : COVER_IMAGES.default;
-const totalSpent = (trip) => (trip.expenses || []).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
 const completion = (trip) => {
   const planned = (trip.days || []).filter((day) => day.stops?.length).length;
   const budget = Number(trip.budgetTotal) > 0 ? 1 : 0;
@@ -66,6 +67,8 @@ const state = {
   route: 'home',
   activeTripId: null,
   activeDayId: null,
+  editingBudget: null,
+  tripsUserId: null,
   filter: 'all',
   syncing: false,
   nearbyResults: [],
@@ -190,6 +193,7 @@ const statusLabel = (trip) => ({ active: 'SEYAHATTESİN', past: 'TAMAMLANDI', pl
 function showRoute(route, { tripId } = {}) {
   if (tripId) {
     state.activeTripId = tripId;
+    state.editingBudget = null;
     state.activeDayId = state.trips.find((trip) => trip.id === tripId)?.days?.[0]?.id || null;
     route = 'trip';
   }
@@ -320,7 +324,7 @@ async function renderFriends({ refresh = true } = {}) {
 function stopMapsUrl(stop, trip) {
   const groundedUrl = safeHttpUrl(stop.mapsSourceUrl);
   if (groundedUrl) return groundedUrl;
-  const query = Number.isFinite(stop.lat) && Number.isFinite(stop.lng)
+  const query = hasLocation(stop)
     ? `${stop.lat},${stop.lng}`
     : stop.address || `${stop.title} ${trip.destination}`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
@@ -366,9 +370,8 @@ function renderTripDetail() {
   const day = trip.days.find((item) => item.id === state.activeDayId) || trip.days[0];
   state.activeDayId = day?.id || null;
   if (!day) return;
-  const spent = totalSpent(trip);
-  const budget = Number(trip.budgetTotal || 0);
-  const progress = budget ? Math.min(100, Math.round(spent / budget * 100)) : 0;
+  const { spent, budget, progress, others } = budgetSummary(trip);
+  const editingBudget = state.editingBudget === trip.id;
   const ready = dayReadiness(day, trip.pace);
   const mapsUrl = googleDayRouteUrl(day);
   const nearby = state.nearbyResults || [];
@@ -378,7 +381,7 @@ function renderTripDetail() {
   <div class="route-map" id="routeMap" role="img" aria-label="Seçili günün rota haritası"></div>
   <div class="studio-toolbar"><button class="secondary-button" data-action="optimize-day"><i data-lucide="route"></i> Rotayı sırala</button><button class="secondary-button" data-action="shift-day" data-minutes="-30"><i data-lucide="clock-arrow-down"></i> 30 dk erkene</button><button class="secondary-button" data-action="shift-day" data-minutes="15"><i data-lucide="clock-arrow-up"></i> +15 dk gecikme</button><button class="secondary-button" data-action="shift-day" data-minutes="30"><i data-lucide="clock-arrow-up"></i> +30 dk gecikme</button>${mapsUrl ? `<a class="primary-button" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener"><i data-lucide="navigation"></i> Tam günü Google Maps'te aç</a>` : ''}</div>
   <div class="nearby-studio"><div><span class="eyebrow">YAKINDA NE VAR?</span><h3>Akıştaki boşluğu doğru yerle doldur.</h3></div><div class="nearby-chips">${Object.keys(NEARBY_CATEGORIES).map((category) => `<button class="${escapeHtml(state.nearbyCategory === category ? 'active' : '')}" data-action="nearby" data-category="${category}">${({ breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', cafe: 'Kahve', attractions: 'Gezilecek yerler' })[category]}</button>`).join('')}<a href="${escapeHtml(tiktokSearchUrl(`${day.theme || 'gezilecek yerler'} önerileri`, trip.destination))}" target="_blank" rel="noopener"><i data-lucide="search"></i>TikTok’ta gezgin videoları</a><label class="secondary-button file-button"><i data-lucide="bookmark-plus"></i>Google kayıtlarını getir<input data-google-saved-input type="file" accept="application/json,.json,.geojson"></label></div>${nearby.length ? `<div class="nearby-results">${nearby.map((place, index) => `<article><div><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || place.primaryType)} · Google Places</small></div><button class="secondary-button" data-action="add-nearby" data-place-index="${index}"><i data-lucide="plus"></i>Ekle</button></article>`).join('')}</div>` : ''}${savedPlaces.length ? `<div class="saved-places"><div><span class="eyebrow">GOOGLE KAYITLARIN · ${savedPlaces.length}</span><button data-action="clear-saved-places">Listeyi temizle</button></div><div class="nearby-results">${savedPlaces.slice(0, 20).map((place, index) => `<article><div><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || 'Kaydedilen yer')}</small></div><button class="secondary-button" data-action="add-saved-place" data-place-index="${index}"><i data-lucide="plus"></i>Güne ekle</button></article>`).join('')}</div></div>` : ''}</div></section>
-  <div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => { const itemReady = dayReadiness(item, trip.pace); return `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${escapeHtml(item.id)}"><strong>${index + 1}. gün ${itemReady.complete ? '✓' : ''}</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })} · ${itemReady.stopCount}/${itemReady.target}</small></button>`; }).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${escapeHtml(day.id)}"><i data-lucide="plus"></i> Yer ara ve ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün boş kalmamalı.</h3><p>AI planını yeniden oluştur veya arama ile kahvaltıdan akşam yemeğine kadar günü doldur.</p><button class="primary-button" data-open-stop="${escapeHtml(day.id)}">İlk yeri ara</button></div>`}</div></section><aside class="trip-side" aria-label="Seyahat özeti ve araçları">${renderEvidenceCard(trip)}<section class="trip-side-card weather-card" id="tripWeatherCard"><span class="eyebrow">HAVA DURUMU</span><h3>Tahmin yükleniyor…</h3></section><section class="trip-side-card"><span class="eyebrow">BÜTÇE</span><h3>Harcamaların</h3><span class="budget-total">${escapeHtml(trip.currency)} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${escapeHtml(trip.currency)} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div><form class="mini-form" id="expenseForm" aria-label="Harcama ekle"><input name="title" required placeholder="Harcama" aria-label="Harcama adı"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar" aria-label="Harcama tutarı"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${escapeHtml(expense.id)}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
+  <div class="trip-summary"><section class="itinerary-card"><div class="day-tabs">${trip.days.map((item, index) => { const itemReady = dayReadiness(item, trip.pace); return `<button class="day-tab ${item.id === day.id ? 'active' : ''}" data-day-id="${escapeHtml(item.id)}"><strong>${index + 1}. gün ${itemReady.complete ? '✓' : ''}</strong><small>${formatDate(item.date, { weekday: 'short', day: 'numeric', month: 'short' })} · ${itemReady.stopCount}/${itemReady.target}</small></button>`; }).join('')}</div><div class="day-head"><div><h2>${escapeHtml(day.title)}</h2><p>${escapeHtml(day.theme || 'Kendi ritminde keşif')}</p></div><button class="secondary-button" data-open-stop="${escapeHtml(day.id)}"><i data-lucide="plus"></i> Yer ara ve ekle</button></div><div class="stop-list">${day.stops?.length ? day.stops.map((stop, index) => renderStop(stop, index, trip, day)).join('') : `<div class="empty-day"><i data-lucide="map-pin-plus"></i><h3>Bu gün boş kalmamalı.</h3><p>AI planını yeniden oluştur veya arama ile kahvaltıdan akşam yemeğine kadar günü doldur.</p><button class="primary-button" data-open-stop="${escapeHtml(day.id)}">İlk yeri ara</button></div>`}</div></section><aside class="trip-side" aria-label="Seyahat özeti ve araçları">${renderEvidenceCard(trip)}<section class="trip-side-card weather-card" id="tripWeatherCard"><span class="eyebrow">HAVA DURUMU</span><h3>Tahmin yükleniyor…</h3></section><section class="trip-side-card"><div class="card-top"><span class="eyebrow">BÜTÇE</span><button class="icon-button" data-action="edit-budget" aria-label="Bütçeyi ve para birimini düzenle"><i data-lucide="pencil"></i></button></div><h3>Harcamaların</h3><span class="budget-total">${escapeHtml(trip.currency)} ${spent.toLocaleString('tr-TR')}</span><p>${budget ? `${escapeHtml(trip.currency)} ${budget.toLocaleString('tr-TR')} bütçenin %${progress}'i` : 'Henüz bir bütçe sınırı belirlenmedi.'}</p><div class="budget-track"><i style="width:${progress}%"></i></div>${others.length ? `<p class="budget-note"><i data-lucide="info"></i>Toplama ${escapeHtml(trip.currency)} dışındaki harcamalar dahil değil: ${others.map((item) => `${escapeHtml(item.currency)} ${item.amount.toLocaleString('tr-TR')}`).join(', ')}</p>` : ''}${editingBudget ? `<form class="budget-form" id="budgetForm" aria-label="Bütçeyi düzenle"><label class="form-field"><span>Toplam bütçe <em>boş = sınır yok</em></span><input name="total" type="number" min="0" max="1000000000" step="0.01" inputmode="decimal" value="${escapeHtml(budget || '')}" placeholder="0"></label><label class="form-field"><span>Para birimi</span><select name="currency">${currencyOptions(trip.currency).map((code) => `<option ${code === trip.currency ? 'selected' : ''}>${escapeHtml(code)}</option>`).join('')}</select></label><p class="budget-note"><i data-lucide="info"></i>Mevcut harcamalar kendi para biriminde kalır; toplam yalnız seçili para birimindekileri sayar.</p><div class="budget-actions"><button class="secondary-button" type="button" data-action="cancel-budget">Vazgeç</button><button class="primary-button" type="submit">Kaydet</button></div></form>` : ''}<form class="mini-form" id="expenseForm" aria-label="Harcama ekle"><input name="title" required placeholder="Harcama" aria-label="Harcama adı"><input name="amount" type="number" min="0.01" step="0.01" required placeholder="Tutar" aria-label="Harcama tutarı"><button aria-label="Harcama ekle"><i data-lucide="plus"></i></button></form><div class="expense-list">${(trip.expenses || []).map((expense) => `<div class="expense-row"><span>${escapeHtml(expense.title)}</span><strong>${escapeHtml(expense.currency || trip.currency)} ${Number(expense.amount).toLocaleString('tr-TR')}</strong><button data-delete-expense="${escapeHtml(expense.id)}" aria-label="Harcamayı sil"><i data-lucide="x"></i></button></div>`).join('')}</div></section><section class="trip-side-card"><span class="eyebrow">JOURNAL</span><h3>Yoldan bir şey kalsın.</h3><p>${trip.journals?.length ? `${trip.journals.length} not bu seyahatle birlikte saklanıyor.` : 'Henüz bir seyahat notu yok.'}</p><button class="secondary-button" data-open="journal"><i data-lucide="pen-line"></i> Not yaz</button></section></aside></div>`;
   icons();
   requestAnimationFrame(() => renderRouteMap($('#routeMap'), day.stops));
   void renderTripWeather(trip);
@@ -396,13 +399,25 @@ function renderAll() {
   icons();
 }
 
+// Removes native reminders of deleted stops/trips. Failures are logged and never block the deletion.
+async function cancelReminders(ids) {
+  if (!window.RoamlyNative?.isNative) return;
+  for (const id of ids) {
+    try { await window.RoamlyNative.cancelTripReminder(id); } catch (error) { console.error(error); }
+  }
+}
+
 async function refreshTrips() {
   setSync('Senkronlanıyor', 'syncing');
   const userId = state.session?.user?.id ?? null;
   try {
     const trips = await loadTrips(state.session);
     if ((state.session?.user?.id ?? null) !== userId) return;
+    // Trips or reminders removed elsewhere (another device) no longer need their local notification; never compare across accounts.
+    const orphaned = state.tripsUserId === userId ? orphanedReminderIds(state.trips, trips) : [];
     state.trips = trips;
+    state.tripsUserId = userId;
+    cancelReminders(orphaned);
     if (!state.activeTripId || !state.trips.some((trip) => trip.id === state.activeTripId)) state.activeTripId = state.trips[0]?.id || null;
     const pending = pendingTripSyncCount(state.session);
     setSync(state.session
@@ -525,13 +540,14 @@ function openStopForm(dayId, stopId) {
   form.elements.title.value = stop?.title || '';
   form.elements.category.value = [...form.elements.category.options].some((option) => option.value === stop?.category) ? stop.category : 'Diğer';
   form.elements.address.value = stop?.address || '';
+  form.elements.duration.value = stop?.duration || '';
   form.elements.notes.value = stop?.notes || '';
   form.elements.bookingStatus.value = stop?.bookingStatus || 'none';
   form.elements.confirmation.value = stop?.confirmation || '';
   form.elements.reminderAt.value = stop?.reminderAt ? String(stop.reminderAt).slice(0, 16) : '';
   form.elements.placeId.value = stop?.placeId || '';
-  form.elements.lat.value = Number.isFinite(Number(stop?.lat)) ? stop.lat : '';
-  form.elements.lng.value = Number.isFinite(Number(stop?.lng)) ? stop.lng : '';
+  form.elements.lat.value = coordinate(stop?.lat) ?? '';
+  form.elements.lng.value = coordinate(stop?.lng) ?? '';
   form.elements.provider.value = stop?.provider || '';
   form.elements.googleMapsUrl.value = stop?.googleMapsUrl || stop?.mapsSourceUrl || '';
   form.elements.rating.value = stop?.rating ?? '';
@@ -626,6 +642,10 @@ document.addEventListener('click', async (event) => {
 
   const action = control.dataset.action;
   if (action === 'manual-trip') await createManualFromPlanner();
+  if (action === 'edit-budget' || action === 'cancel-budget') {
+    state.editingBudget = action === 'edit-budget' ? state.activeTripId : null;
+    renderTripDetail();
+  }
   if (action === 'optimize-day') {
     const trip = activeTrip();
     const index = trip.days.findIndex((item) => item.id === state.activeDayId);
@@ -685,9 +705,11 @@ document.addEventListener('click', async (event) => {
     const form = $('#stopForm');
     const trip = activeTrip();
     const day = trip.days.find((item) => item.id === form.elements.dayId.value);
+    const removedReminders = reminderIdsForStops(day.stops.filter((stop) => stop.id === form.elements.stopId.value));
     day.stops = day.stops.filter((stop) => stop.id !== form.elements.stopId.value);
     closeModal();
     await persistTrip(trip, 'Durak silindi.');
+    await cancelReminders(removedReminders);
     renderTripDetail();
   }
   if (action === 'delete-trip') {
@@ -695,6 +717,7 @@ document.addEventListener('click', async (event) => {
     if (!trip || !window.confirm(`${trip.destination} seyahatini kalıcı olarak silmek istiyor musun?`)) return;
     try {
       state.trips = await deleteTrip(trip.id, state.session, state.trips);
+      await cancelReminders(reminderIdsForTrip(trip));
       state.activeTripId = state.trips[0]?.id || null;
       renderAll();
       showRoute('trips');
@@ -800,11 +823,11 @@ $('#stopForm').addEventListener('submit', async (event) => {
     bookingStatus: String(data.get('bookingStatus') || 'none'),
     confirmation: String(data.get('confirmation') || '').trim(),
     reminderAt: String(data.get('reminderAt') || ''),
-    duration: '',
+    duration: String(data.get('duration') || '').trim().slice(0, 40),
     mealRole: ({ Kahvaltı: 'Breakfast', 'Öğle yemeği': 'Lunch', 'Akşam yemeği': 'Dinner' })[String(data.get('category'))] || 'None',
     placeId: String(data.get('placeId') || ''),
-    lat: data.get('lat') === '' ? null : Number(data.get('lat')),
-    lng: data.get('lng') === '' ? null : Number(data.get('lng')),
+    lat: coordinate(data.get('lat')),
+    lng: coordinate(data.get('lng')),
     provider: String(data.get('provider') || ''),
     googleMapsUrl: String(data.get('googleMapsUrl') || ''),
     mapsSourceUrl: String(data.get('googleMapsUrl') || ''),
@@ -863,6 +886,18 @@ document.addEventListener('submit', async (event) => {
   const trip = activeTrip();
   trip.expenses = [...(trip.expenses || []), { id: uid(), title: String(data.get('title')).trim(), category: 'Diğer', amount: Number(data.get('amount')), currency: trip.currency, createdAt: new Date().toISOString() }];
   await persistTrip(trip, 'Harcama eklendi.');
+  renderTripDetail();
+});
+
+document.addEventListener('submit', async (event) => {
+  if (event.target.id !== 'budgetForm') return;
+  event.preventDefault();
+  const data = new FormData(event.target);
+  const trip = activeTrip();
+  const next = applyBudgetSettings(trip, { total: String(data.get('total') || ''), currency: String(data.get('currency') || '') });
+  if (next.error) { toast(next.error, 'error'); return; }
+  state.editingBudget = null;
+  try { await persistTrip({ ...trip, budgetTotal: next.budgetTotal, currency: next.currency, expenses: next.expenses }, 'Bütçe güncellendi.'); } catch { state.editingBudget = trip.id; }
   renderTripDetail();
 });
 

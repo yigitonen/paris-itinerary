@@ -24,6 +24,14 @@ test('a first guest visit starts with the example trip', withGuestStorage(async 
   assert.deepEqual(trips.map((trip) => trip.id), ['demo-rome']);
 }));
 
+test('guest stops without coordinates stay null after a reload', withGuestStorage(async () => {
+  const [demo] = await loadTrips(null);
+  const stop = { id: 'no-pin', time: '10:00', title: 'Kahve', lat: null, lng: null };
+  await saveTrip({ ...demo, days: [{ ...demo.days[0], stops: [stop] }] }, null, [demo]);
+  const [reloaded] = await loadTrips(null);
+  assert.deepEqual([reloaded.days[0].stops[0].lat, reloaded.days[0].stops[0].lng], [null, null]);
+}));
+
 test('guest edits to the example trip survive a reload', withGuestStorage(async () => {
   const [demo] = await loadTrips(null);
   const edited = {
