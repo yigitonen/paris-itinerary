@@ -526,6 +526,7 @@ function openStopForm(dayId, stopId) {
   form.elements.title.value = stop?.title || '';
   form.elements.category.value = [...form.elements.category.options].some((option) => option.value === stop?.category) ? stop.category : 'Diğer';
   form.elements.address.value = stop?.address || '';
+  form.elements.duration.value = stop?.duration || '';
   form.elements.notes.value = stop?.notes || '';
   form.elements.bookingStatus.value = stop?.bookingStatus || 'none';
   form.elements.confirmation.value = stop?.confirmation || '';
@@ -801,7 +802,7 @@ $('#stopForm').addEventListener('submit', async (event) => {
     bookingStatus: String(data.get('bookingStatus') || 'none'),
     confirmation: String(data.get('confirmation') || '').trim(),
     reminderAt: String(data.get('reminderAt') || ''),
-    duration: '',
+    duration: String(data.get('duration') || '').trim().slice(0, 40),
     mealRole: ({ Kahvaltı: 'Breakfast', 'Öğle yemeği': 'Lunch', 'Akşam yemeği': 'Dinner' })[String(data.get('category'))] || 'None',
     placeId: String(data.get('placeId') || ''),
     lat: coordinate(data.get('lat')),
