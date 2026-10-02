@@ -30,8 +30,8 @@
  *   PLAYWRIGHT_MODULE_DIR    directory containing node_modules/playwright (optional)
  *   PLAYWRIGHT_BROWSERS_PATH where the Chromium build lives
  *   HTTPS_PROXY              used by Chromium when set (127.0.0.1 and localhost bypass it)
- *   EXTRA_CA_CERT            PEM file of a TLS-inspecting proxy's CA to trust (pinned by public key; defaults to
- *                            /root/.ccr/agent-proxy-ca.crt when that exists and HTTPS_PROXY is set)
+ *   EXTRA_CA_CERT            PEM file of a TLS-inspecting proxy's CA to trust (pinned by public key;
+ *                            used only when set)
  *
  * What it shows: guest mode (nothing is signed in) with the example trip the app seeds
  * for every new guest (createDemoTrip in src/data.js), driven through the real UI. The only
@@ -130,7 +130,7 @@ for (const file of readdirSync(OUT_DIR)) if (/\.png$/.test(file)) rmSync(join(OU
 // fail. Rather than ignoring certificate errors, trust exactly that CA: EXTRA_CA_CERT (a PEM file) is
 // pinned by its public key. The proxy is applied per context so that localhost bypasses it.
 const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-const extraCa = process.env.EXTRA_CA_CERT || (proxy && existsSync('/root/.ccr/agent-proxy-ca.crt') ? '/root/.ccr/agent-proxy-ca.crt' : '');
+const extraCa = process.env.EXTRA_CA_CERT || '';
 const launchArgs = ['--hide-scrollbars'];
 if (extraCa) {
   const certificate = new X509Certificate(readFileSync(extraCa));
