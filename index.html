@@ -183,9 +183,9 @@
     <section class="modal-panel auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <button class="icon-button modal-close" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button>
       <span class="brand-symbol large" aria-hidden="true"><i data-lucide="route"></i></span><span class="eyebrow coral-text">BULUTTA GÜVENDE</span><h2 id="authTitle">Planların seninle gelsin.</h2><p>Farklı cihazlarda devam et ve Gemini destekli gerçek AI planlama kullan.</p>
-      <button class="primary-button google-button" data-action="sign-in-google" data-initial-focus><i data-lucide="chrome"></i> Google ile devam et</button>
-      <div class="divider"><span>veya</span></div>
-      <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" type="submit">Giriş bağlantısı gönder</button></form>
+      <button class="primary-button google-button" id="googleSignInButton" data-action="sign-in-google" data-initial-focus><i data-lucide="chrome"></i> Google ile devam et</button>
+      <div class="divider" id="authDivider"><span>veya</span></div>
+      <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" id="emailSignInButton" type="submit">Giriş bağlantısı gönder</button></form>
       <p class="form-note">Şifre yok. E-postana güvenli bir giriş bağlantısı göndeririz.</p>
     </section>
   </div>

@@ -16,6 +16,7 @@ import {
   supabase
 } from './src/repository.js';
 import { generateTrip } from './src/planner.js';
+import { signInOptions } from './src/auth-options.js';
 import { clearAiConsent, getAiConsent, needsAiConsent, setAiConsent } from './src/ai-consent.js';
 import { createPlacesClient, debounce, NEARBY_CATEGORIES, placeSearchMessage } from './src/places.js';
 import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
@@ -164,6 +165,23 @@ function requestAiConsent() {
     aiConsentResolver = resolve;
     openModal('#aiConsentModal');
   });
+}
+
+// Native iOS offers email sign-in only (App Store 4.8 asks for Sign in with Apple next to Google); web and Android keep Google.
+// Capacitor injects window.Capacitor before the page scripts run, while RoamlyNative is only filled in once its plugins load.
+const appPlatform = () => window.RoamlyNative?.platform || window.Capacitor?.getPlatform?.() || 'web';
+function applySignInOptions() {
+  const { google } = signInOptions(appPlatform());
+  const googleButton = $('#googleSignInButton');
+  const email = $('#emailAuthForm').elements.email;
+  googleButton.classList.toggle('hidden', !google);
+  $('#authDivider').classList.toggle('hidden', !google);
+  // The email button becomes the primary action and takes initial focus when it is the only option.
+  const submit = $('#emailSignInButton');
+  submit.classList.toggle('primary-button', !google);
+  submit.classList.toggle('secondary-button', google);
+  googleButton.toggleAttribute('data-initial-focus', google);
+  email.toggleAttribute('data-initial-focus', !google);
 }
 
 function setLoading(open) {
@@ -807,6 +825,7 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'sign-in-google') {
+    if (!signInOptions(appPlatform()).google) return;
     if (!navigator.onLine) { toast('Giriş yapmak için internet bağlantısı gerekiyor.', 'error'); return; }
     const { data, error } = await startGoogleOAuth(location.href);
     if (!error && data?.url && window.Capacitor?.isNativePlatform?.()) {
@@ -1105,6 +1124,8 @@ async function applySession(session, { announce = false } = {}) {
 
 async function initialize() {
   icons();
+  applySignInOptions();
+  document.addEventListener('roamly:native-ready', applySignInOptions);
   // Supabase holds its auth lock while this callback runs, so defer the work instead of awaiting Supabase inside it.
   supabase.auth.onAuthStateChange((_event, session) => {
     setTimeout(() => { applySession(session, { announce: true }).catch(console.error); }, 0);

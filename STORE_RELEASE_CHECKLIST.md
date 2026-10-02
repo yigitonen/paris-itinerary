@@ -39,6 +39,8 @@
 
 - [x] Complete a protected end-to-end AI plan smoke test with the server-side `GEMINI_API_KEY` on Google AI Studio Free Tier.
 - [x] Passwordless email-link and Google sign-in only; no password is collected. Revisit leaked-password protection if passwords are added.
+- [x] iOS sign-in is email magic-link only: the Google button is hidden on native iOS (`signInOptions` in `src/auth-options.js`; web and Android keep Google). App Store guideline 4.8 requires Sign in with Apple whenever an app offers a third-party login such as Google, and Sign in with Apple is not implemented yet. Adding it later (Apple capability, Supabase Apple provider, button on iOS) would allow re-enabling Google on iOS by flipping the rule in `signInOptions`.
+- [ ] On a physical iPhone, confirm the email link opens the app through the `roamly://` callback and signs in, and that no Google button appears in the sign-in dialog. App Review needs a way to sign in, so give reviewers a test email inbox or a pre-created account in the review notes.
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.
 - [ ] Replace temporary signing with the production keystore and distribution certificate.

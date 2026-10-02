@@ -3,7 +3,8 @@ import { recapShareOptions } from './src/sharing.js';
 
 const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
 
-window.RoamlyNative = { isNative: false };
+// `platform` is readable before the plugins finish loading: 'ios' | 'android' | 'web'.
+window.RoamlyNative = { isNative: false, platform: isNative ? window.Capacitor.getPlatform?.() || 'web' : 'web' };
 
 if (isNative) {
   bootNative().catch((error) => console.warn('Native bridge could not start', error));
@@ -36,6 +37,7 @@ async function bootNative() {
 
   window.RoamlyNative = {
     isNative: true,
+    platform: Capacitor.getPlatform(),
     async shareRecap({ title, text, url }) {
       await Share.share({
         ...recapShareOptions({ title, text, url }),
