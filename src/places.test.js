@@ -118,6 +118,30 @@ test('a 429 reports the daily limit', async () => {
   await assert.rejects(createPlacesClient({ supabaseClient: edge.client }).autocomplete('Topkapı'), { code: 'quota' });
 });
 
+test('provider failures from the places function map to distinct codes', async (t) => {
+  failingFetch(t);
+  const cases = [
+    [503, 'provider_rate_limited', 'busy'],
+    [503, 'provider_unavailable', 'unavailable'],
+    [503, 'quota_unavailable', 'unavailable'],
+    [504, 'provider_timeout', 'timeout'],
+    [504, '', 'timeout'],
+    [502, 'provider_error', 'failed'],
+    [502, '', 'failed']
+  ];
+  for (const [status, code, expected] of cases) {
+    const body = code ? JSON.stringify({ error: 'x', code }) : 'not json';
+    const edge = mockSupabase({ invoke: async () => ({ data: null, error: Object.assign(new Error('non-2xx'), { context: new Response(body, { status }) }) }) });
+    await assert.rejects(createPlacesClient({ supabaseClient: edge.client }).autocomplete('Topkapı'), { code: expected }, `${status} ${code}`);
+  }
+});
+
+test('a 429 stays the daily limit even if the body carries a provider code', async () => {
+  const body = JSON.stringify({ code: 'provider_rate_limited' });
+  const edge = mockSupabase({ invoke: async () => ({ data: null, error: Object.assign(new Error('non-2xx'), { context: new Response(body, { status: 429 }) }) }) });
+  await assert.rejects(createPlacesClient({ supabaseClient: edge.client }).autocomplete('Topkapı'), { code: 'quota' });
+});
+
 test('other function failures report a failed search', async (t) => {
   failingFetch(t);
   for (const error of [new Error('provider key missing'), Object.assign(new Error('non-2xx'), { context: new Response('{}', { status: 500 }) })]) {
@@ -231,6 +255,8 @@ test('placeSearchMessage returns Turkish copy for each code', () => {
   assert.equal(placeSearchMessage('signed_out'), 'Yer aramak için hesabınla giriş yap. Durağı elle de yazabilirsin.');
   assert.equal(placeSearchMessage({ code: 'unavailable' }), 'Yer arama şu anda kullanılamıyor. Durağı elle yazabilirsin.');
   assert.equal(placeSearchMessage({ code: 'quota' }), 'Bugünkü yer arama sınırına ulaşıldı. Durağı elle yazabilirsin.');
+  assert.equal(placeSearchMessage({ code: 'busy' }), 'Yer arama şu anda çok yoğun. Biraz sonra yeniden dene veya durağı elle yaz.');
+  assert.equal(placeSearchMessage({ code: 'timeout' }), 'Yer arama zaman aşımına uğradı. Yeniden dene veya durağı elle yaz.');
   assert.equal(placeSearchMessage({ code: 'failed' }), 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.');
   assert.equal(placeSearchMessage(new Error('x')), 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.');
   assert.equal(placeSearchMessage(undefined), 'Arama şu anda yanıt vermedi; yeri elle yazabilirsin.');

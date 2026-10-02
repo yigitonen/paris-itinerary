@@ -321,12 +321,14 @@ export async function migrateGuestTrips(session) {
   });
 }
 
-export async function joinLocalsWaitlist({ email, city, note }, session) {
-  const { error } = await supabase.from('locals_waitlist').insert({
-    user_id: session?.user?.id || null,
-    email,
-    city,
-    note
+// The table is closed to direct inserts: the RPC records user_id from the caller's JWT and answers
+// identically for a new and an already-listed (email, city), so the form cannot probe the list.
+// `session` is kept for call-site compatibility; the server decides who the caller is.
+export async function joinLocalsWaitlist({ email, city, note }, _session) {
+  const { error } = await supabase.rpc('join_locals_waitlist', {
+    p_email: email,
+    p_city: city,
+    p_note: note || ''
   });
   if (error) throw error;
 }

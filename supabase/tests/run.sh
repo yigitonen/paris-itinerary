@@ -10,6 +10,8 @@
 # Usage:
 #   supabase/tests/run.sh                    # throwaway local cluster (default)
 #   DATABASE_URL=postgresql://postgres@host/scratch supabase/tests/run.sh
+#   TEST_ROLLBACK=1 supabase/tests/run.sh    # also run every supabase/rollback/*.down.sql (newest
+#                                            # first) and compare the schema with what is live
 #   KEEP_CLUSTER=1 supabase/tests/run.sh     # leave the cluster running; prints how to connect
 #   PG_BIN=/usr/lib/postgresql/16/bin supabase/tests/run.sh
 #
@@ -122,6 +124,17 @@ if bash "$HERE/test_concurrency.sh"; then
 else
   echo "  FAIL  test_concurrency.sh" >&2
   FAILED=1
+fi
+
+if [ "${TEST_ROLLBACK:-0}" = 1 ]; then
+  log "Rollback test (supabase/rollback/*.down.sql, newest first)"
+  export PG_BIN
+  if bash "$HERE/test_rollback.sh"; then
+    echo "  PASS  test_rollback.sh"
+  else
+    echo "  FAIL  test_rollback.sh" >&2
+    FAILED=1
+  fi
 fi
 
 echo
