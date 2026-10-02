@@ -59,10 +59,15 @@ export function createManualTrip({ destination, startDate, days, style = 'Dengel
   };
 }
 
-export function createDemoTrip() {
+export const DEMO_TRIP_LEAD_DAYS = 14;
+
+// The example trip starts two weeks after it is created, so a new guest (and App Review) never sees it as already finished.
+// Only newly created examples get these dates; an example already saved on a device keeps the dates it was stored with.
+export function createDemoTrip(now = new Date()) {
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const trip = createManualTrip({
     destination: 'Roma',
-    startDate: '2026-08-12',
+    startDate: addDays(today, DEMO_TRIP_LEAD_DAYS),
     days: 4,
     style: 'Yeme içme',
     pace: 'Rahat',
