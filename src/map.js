@@ -19,10 +19,20 @@ export function renderRouteMap(element, stops = []) {
   }
   element.innerHTML = '';
   activeMap = L.map(element, { zoomControl: true, scrollWheelZoom: false });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const fallback = document.createElement('div');
+  fallback.className = 'map-fallback';
+  fallback.hidden = true;
+  fallback.textContent = 'Harita yüklenemedi · Duraklar listede';
+  element.appendChild(fallback);
+  let tilesLoaded = false;
+  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
-  }).addTo(activeMap);
+  });
+  // Only say the map failed when no tile has ever arrived; a stray miss on a working map stays quiet.
+  tiles.on('tileload', () => { tilesLoaded = true; fallback.hidden = true; });
+  tiles.on('tileerror', () => { if (!tilesLoaded) fallback.hidden = false; });
+  tiles.addTo(activeMap);
   const points = located.map((stop, index) => {
     const point = [Number(stop.lat), Number(stop.lng)];
     L.marker(point, {
