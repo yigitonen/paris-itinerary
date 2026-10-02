@@ -1168,8 +1168,8 @@ $('#deleteAccountForm').addEventListener('submit', async (event) => {
   deletingAccount = true;
   syncDeleteAccountForm();
   try {
-    // Cancel the account's native reminders first; a failure here must not stop the deletion.
-    try { await cancelReminders(reminderIdsForTrips(state.trips)); } catch (error) { console.error(error); }
+    // Collect the account's reminders now (sign-out resets state.trips) but cancel them only once the deletion succeeded.
+    const accountReminders = reminderIdsForTrips(state.trips);
     try {
       await deleteAccount(supabase);
     } catch (error) {
@@ -1177,6 +1177,7 @@ $('#deleteAccountForm').addEventListener('submit', async (event) => {
       toast(error?.message || 'Hesabın silinemedi. Lütfen tekrar dene.', 'error');
       return;
     }
+    try { await cancelReminders(accountReminders); } catch (error) { console.error(error); }
     deletingAccount = false;
     closeModal($('#deleteAccountModal'));
     await returnToGuest();
