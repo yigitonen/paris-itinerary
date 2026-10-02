@@ -242,9 +242,9 @@ body.offline .offline-notice { display: block; }
 .stop-item:last-child:after { display: none; }
 .stop-time { font-size: 12px; color: var(--muted); padding-top: 6px; }
 .stop-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--coral-strong); color: white; font-size: 11px; font-weight: 800; z-index: 1; }
-.stop-card { border: 1px solid var(--line); border-radius: 15px; padding: 14px 15px; margin-bottom: 10px; display: flex; gap: 12px; align-items: flex-start; }
+.stop-card { border: 1px solid var(--line); border-radius: 15px; padding: 14px 15px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 .stop-card:hover { border-color: #bfbab0; }
-.stop-card > div { flex: 1; min-width: 0; }
+.stop-card > .stop-content { flex: 1 1 220px; min-width: 0; }
 .stop-card h3 { font: 600 16px Georgia, serif; margin: 0 0 4px; }
 .maps-attribution { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 8px; color: #4169a1; font-size: 11px; font-weight: 750; }
 .maps-attribution svg { width: 10px; height: 10px; }
@@ -262,7 +262,7 @@ body.offline .offline-notice { display: block; }
 .stop-card .stop-insight { margin-top: 7px; padding: 8px 9px; border-left: 2px solid #c7d2bd; background: #f6f7f3; border-radius: 0 8px 8px 0; }
 .stop-card .traveler-insight { border-left-color: var(--coral); background: #fff7f3; }
 .stop-insight strong { display: block; color: var(--ink); margin-bottom: 2px; font-size: 11px; letter-spacing: 0; text-transform: none; }
-.stop-tools { display: flex; gap: 6px; }
+.stop-tools { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 6px; max-width: 100%; }
 .stop-tools a, .stop-tools button { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); background: transparent; border-radius: 9px; color: var(--ink); }
 .stop-tools svg { width: 16px; }
 .empty-day { border: 1px dashed #bbb7ae; border-radius: 16px; padding: 42px 20px; text-align: center; }
@@ -446,6 +446,16 @@ fieldset { border: 0; padding: 0; margin: 0; }
   .trip-side { grid-template-columns: repeat(2, 1fr); }
   .studio-heading { align-items: flex-start; flex-direction: column; }
   .readiness-pill { width: 100%; }
+}
+
+/* iPad and small laptop widths: the 300px side column leaves the stop cards only ~240px, so stack it under the itinerary. */
+@media (max-width: 1200px) {
+  .trip-summary { grid-template-columns: 1fr; }
+  .trip-side { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .trip-side { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
