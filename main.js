@@ -21,10 +21,10 @@ import { clearAiConsent, getAiConsent, needsAiConsent, setAiConsent } from './sr
 import { createPlacesClient, debounce, NEARBY_CATEGORIES, placeSearchMessage } from './src/places.js';
 import { dayCenter, dayReadiness, googleDayRouteUrl, mealRole, moveStop, optimizeDay, shiftDay, tiktokSearchUrl } from './src/itinerary.js';
 import { renderRouteMap } from './src/map.js';
-import { ensureProfile, loadConnections, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
+import { ensureProfile, loadConnections, loadDiscoverable, setDiscoverable, removeConnection, requestConnection, respondToConnection, searchProfiles } from './src/social.js';
 import { createPostSignInGuard, createUserTracker, PENDING_PLAN_KEY, registerServiceWorker, takePendingPlan } from './src/lifecycle.js';
 import { parseGoogleSavedPlaces } from './src/importers.js';
-import { getTripWeather } from './src/weather.js';
+import { formatTemperature, getTripWeather, hasWeatherData } from './src/weather.js';
 import { coordinate, hasLocation } from './src/coords.js';
 import { applyBudgetSettings, budgetSummary, currencyOptions } from './src/budget.js';
 import { orphanedReminderIds, reminderIdFor, reminderIdsFor, reminderIdsForStops, reminderIdsForTrip, reminderIdsForTrips, reminderIdsOnUserChange } from './src/reminders.js';
@@ -66,6 +66,7 @@ const importanceLabel = (value) => ({ 'must-see': 'Önemli durak', local: 'Yerel
 
 const state = {
   session: null,
+  discoverability: null,
   trips: [],
   route: 'home',
   activeTripId: null,
@@ -320,11 +321,38 @@ function renderSettings() {
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
   $('#accountSettings').innerHTML = user ? `<span class="settings-icon"><i data-lucide="cloud-check"></i></span><div><div class="account-profile"><span class="account-avatar">${escapeHtml(accountInitials(name))}</span><div><strong>${escapeHtml(name || 'Roamly hesabı')}</strong><small>${escapeHtml(user.email || '')} · senkron açık</small></div></div><p>Seyahatlerin Supabase üzerinde yalnızca hesabın tarafından okunabilir ve düzenlenebilir.</p><button class="secondary-button" data-action="sign-out">Çıkış yap</button></div>` : `<span class="settings-icon"><i data-lucide="cloud"></i></span><div><h2>Bulut senkronu</h2><p>Planlarını bu cihazın dışına taşı, AI planlama kullan ve telefonunda kaldığın yerden devam et.</p><button class="primary-button" data-open="auth">Hesapla devam et</button></div>`;
   $('#deleteAccountSettings').classList.toggle('hidden', !user); // guests have no account; their trips stay on this device
+  renderDiscoverability();
   const consent = needsAiConsent() ? null : getAiConsent();
   const consentDate = consent ? formatDateTime(consent.acceptedAt) : '';
   $('#aiConsentSettings').innerHTML = `<span class="settings-icon peach"><i data-lucide="sparkles"></i></span><div><h2>AI planlama izni</h2>${consent
     ? `<p>İzin verildi${consentDate ? ` · ${escapeHtml(consentDate)}` : ''}. AI planı isterken şehir, tarihler, tercihlerin ve notun Roamly’nin sunucusu üzerinden Google Gemini’ye gönderilir. İzni geri çekersen sonraki AI planında yeniden sorarız.</p><button class="secondary-button" data-action="ai-consent-withdraw">İzni geri çek</button>`
     : `<p>Henüz izin vermedin. İlk AI planı isteğinde neyin Google Gemini’ye gönderileceğini gösterip sana soracağız. Boş planlar hiçbir şey göndermez.</p>`}</div>`;
+  icons();
+}
+
+// Profile visibility ("Diğer Roamly kullanıcıları beni arayarak bulabilsin"): signed-in only, loaded once per account.
+function renderDiscoverability() {
+  const root = $('#discoverabilitySettings');
+  const user = state.session?.user;
+  root.classList.toggle('hidden', !user);
+  if (!user) { state.discoverability = null; return; }
+  if (state.discoverability?.userId !== user.id) {
+    state.discoverability = { userId: user.id, status: 'loading', value: true };
+    const sessionAtStart = state.session;
+    loadDiscoverable(sessionAtStart).then((value) => {
+      if (state.session?.user?.id !== sessionAtStart.user.id) return;
+      state.discoverability = { userId: user.id, status: 'ready', value };
+      renderDiscoverability();
+    }).catch((error) => {
+      console.error(error);
+      if (state.session?.user?.id !== sessionAtStart.user.id) return;
+      state.discoverability = { userId: user.id, status: 'error', value: true };
+      renderDiscoverability();
+    });
+  }
+  const { status, value } = state.discoverability;
+  const note = status === 'loading' ? 'Ayar yükleniyor…' : status === 'error' ? 'Ayar yüklenemedi. Bağlantını kontrol edip yeniden dene.' : value ? 'Şu an açık: adın ve kullanıcı adın arama sonuçlarında görünür.' : 'Şu an kapalı: arama sonuçlarında görünmezsin. Arkadaşlık isteği gönderdiğin ve bağlandığın kişiler seni yine görür.';
+  root.innerHTML = `<span class="settings-icon"><i data-lucide="eye"></i></span><div><h2>Profil görünürlüğü</h2><label class="switch-row"><input type="checkbox" data-action="toggle-discoverable" ${value ? 'checked' : ''} ${status === 'ready' ? '' : 'disabled'}><span class="switch" aria-hidden="true"></span><span>Diğer Roamly kullanıcıları beni arayarak bulabilsin</span></label><p aria-live="polite">${escapeHtml(note)}</p>${status === 'error' ? '<button class="secondary-button" type="button" data-action="reload-discoverability">Yeniden dene</button>' : ''}</div>`;
   icons();
 }
 
@@ -408,9 +436,9 @@ async function renderTripWeather(trip) {
   const center = dayCenter({ stops: trip.days.flatMap((day) => day.stops || []) });
   if (!root || !center) { if (root) root.hidden = true; return; }
   try {
-    const forecast = await getTripWeather({ ...center, startDate: trip.startDate, endDate: trip.endDate });
+    const forecast = (await getTripWeather({ ...center, startDate: trip.startDate, endDate: trip.endDate })).filter(hasWeatherData);
     if (!root.isConnected || activeTrip()?.id !== trip.id || !forecast.length) { root.hidden = true; return; }
-    root.innerHTML = `<span class="eyebrow">HAVA DURUMU</span><h3>Valiz ve rota için kısa bakış</h3><div class="weather-days">${forecast.map((day) => `<span><strong>${formatDate(day.date, { weekday: 'short', day: 'numeric' })}</strong><em>${escapeHtml(day.label)}</em><b>${Number(day.max)}° / ${Number(day.min)}°</b><small>%${Number(day.rain)} yağış</small></span>`).join('')}</div><p>Open-Meteo tahmini · Seyahate yaklaşınca yeniden kontrol et.</p>`;
+    root.innerHTML = `<span class="eyebrow">HAVA DURUMU</span><h3>Valiz ve rota için kısa bakış</h3><div class="weather-days">${forecast.map((day) => `<span><strong>${formatDate(day.date, { weekday: 'short', day: 'numeric' })}</strong>${day.label ? `<em>${escapeHtml(day.label)}</em>` : ''}<b>${escapeHtml(formatTemperature(day.max))} / ${escapeHtml(formatTemperature(day.min))}</b>${day.rain === null ? '' : `<small>%${Number(day.rain)} yağış</small>`}</span>`).join('')}</div><p>Open-Meteo tahmini · Seyahate yaklaşınca yeniden kontrol et.</p>`;
   } catch { if (root.isConnected) root.hidden = true; }
 }
 
@@ -830,6 +858,7 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'ai-consent-decline') { closeModal(); return; }
+  if (action === 'reload-discoverability') { state.discoverability = null; renderSettings(); return; }
   if (action === 'ai-consent-withdraw') {
     if (clearAiConsent()) toast('AI izni geri çekildi. Bir sonraki AI planında yeniden sorarız.');
     else toast('İzin geri çekilemedi. Tarayıcı verilerini temizlemeyi dene.', 'error');
@@ -1013,6 +1042,22 @@ $('#importInput').addEventListener('change', async (event) => {
 });
 
 document.addEventListener('change', async (event) => {
+  if (event.target.matches('[data-action="toggle-discoverable"]')) {
+    const input = event.target;
+    const sessionAtStart = state.session;
+    const wanted = input.checked;
+    if (!sessionAtStart || !state.discoverability) return;
+    input.disabled = true;
+    try {
+      state.discoverability.value = await setDiscoverable(wanted, sessionAtStart);
+      toast(state.discoverability.value ? 'Profilin aramalarda görünüyor.' : 'Profilin aramalarda gizlendi.');
+    } catch (error) {
+      console.error(error);
+      toast(!navigator.onLine ? 'Bu ayarı değiştirmek için internet bağlantısı gerekiyor.' : 'Ayar kaydedilemedi. Biraz sonra yeniden dene.', 'error');
+    }
+    if (state.session?.user?.id === sessionAtStart.user.id) renderDiscoverability();
+    return;
+  }
   if (!event.target.matches('[data-google-saved-input]')) return;
   const file = event.target.files?.[0];
   if (!file) return;

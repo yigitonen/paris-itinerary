@@ -106,6 +106,45 @@ export function createSocialApi(client) {
     throw queryError(insertResult.error, 'Your profile could not be created.');
   }
 
+  // Whether other Roamly users can find the signed-in user by searching. A user without a profile row yet gets one (default: true)
+  // the first time they open Friends, so that default is what applies until then.
+  async function loadDiscoverable(session) {
+    const user = requireUser(session);
+    const result = await client.from('profiles')
+      .select('discoverable')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (result.error) throw queryError(result.error, 'Your profile visibility could not be loaded.');
+    return result.data ? result.data.discoverable !== false : true;
+  }
+
+  // Updates only the caller's own profile row (RLS and the column grant allow the owner to change `discoverable`).
+  async function setDiscoverable(value, session) {
+    const user = requireUser(session);
+    if (typeof value !== 'boolean') throw new Error('Profile visibility must be true or false.');
+
+    const updateOwn = () => client.from('profiles')
+      .update({ discoverable: value })
+      .eq('user_id', user.id)
+      .select('discoverable')
+      .maybeSingle();
+    const updated = await updateOwn();
+    if (updated.error) throw queryError(updated.error, 'Your profile visibility could not be saved.');
+    if (updated.data) return updated.data.discoverable;
+
+    // No profile row yet: create it with the chosen visibility instead of its default.
+    const inserted = await client.from('profiles')
+      .insert({ ...profileFromUser(user), discoverable: value })
+      .select('discoverable')
+      .single();
+    if (!inserted.error) return inserted.data.discoverable;
+    if (inserted.error.code === '23505') {
+      const raced = await updateOwn();
+      if (!raced.error && raced.data) return raced.data.discoverable;
+    }
+    throw queryError(inserted.error, 'Your profile visibility could not be saved.');
+  }
+
   async function searchProfiles(query, session) {
     const user = requireUser(session);
     const term = String(query || '')
@@ -183,6 +222,8 @@ export function createSocialApi(client) {
 
   return {
     ensureProfile,
+    loadDiscoverable,
+    setDiscoverable,
     searchProfiles,
     loadConnections,
     requestConnection,
@@ -193,6 +234,8 @@ export function createSocialApi(client) {
 
 export const {
   ensureProfile,
+  loadDiscoverable,
+  setDiscoverable,
   searchProfiles,
   loadConnections,
   requestConnection,

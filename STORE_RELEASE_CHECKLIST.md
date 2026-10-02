@@ -38,6 +38,10 @@ The submission pack in [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md) ho
 - [x] Native recap sharing, local reminders, and custom deep-link integrations.
 - [x] Responsive desktop/mobile layout, keyboard-accessible dialogs, and reduced-motion support.
 - [x] Production builds and dependency audit.
+- [x] Example trip starts 14 days after first launch (no more "TAMAMLANDI" for new guests and App Review); weather shows "—" instead of 0° when the forecast has gaps.
+- [x] Profile visibility: Ayarlar > Profil görünürlüğü (signed-in) lets users hide themselves from friend search; `privacy.html` has a "Profil ve arkadaşlar" section and names Google Maps and the TikTok search link correctly.
+- [x] iOS: `ITSAppUsesNonExemptEncryption = false` in `Info.plist` and an app privacy manifest (`PrivacyInfo.xcprivacy`, in the App target).
+- [x] iPad: trip detail layout fixed for 768 to 1366 pt widths.
 - [x] Account deletion backend and public web page (code complete, see "Account deletion" below; needs the deploy steps before it works in production).
 
 ## Before signing and store submission
@@ -48,6 +52,8 @@ The submission pack in [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md) ho
 - [ ] On a physical iPhone, confirm the email link opens the app through the `roamly://` callback and signs in, and that no Google button appears in the sign-in dialog. App Review needs a way to sign in, so give reviewers a test email inbox or a pre-created account in the review notes.
 - [ ] Install Android Studio with Android SDK 36 and Java 21.
 - [ ] Install current Xcode and select the Apple Developer Team.
+- [ ] In Xcode: confirm `PrivacyInfo.xcprivacy` is in the App target (Copy Bundle Resources), then Product > Archive > Generate Privacy Report and check it lists no missing required-reason API.
+- [ ] On a physical iPad (or simulator), open a trip and confirm the stop cards and their five tool buttons fit in portrait and landscape; decide whether to ship iPad for 1.0 (otherwise set `TARGETED_DEVICE_FAMILY = 1`).
 - [ ] Replace temporary signing with the production keystore and distribution certificate.
 - [ ] Complete Apple App Privacy and Google Play Data Safety forms using `privacy.html` as the source of truth; draft answers are in sections 3 and 4 of [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md).
 - [ ] Capture App Store and Play Store screenshots from a physical device or simulator (plan, sizes and `scripts/store-screenshots.mjs` in section 8 of [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md)).
