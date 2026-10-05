@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f4f1e9">
+  <meta name="color-scheme" content="light">
   <meta name="description" content="Roamly seyahatini planlar, rotanı sadeleştirir ve anılarını bir arada tutar.">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Roamly">
@@ -36,8 +37,8 @@
       <nav class="side-nav" aria-label="Sayfalar">
         <button class="nav-item active" data-route="home"><i data-lucide="house"></i><span>Bugün</span></button>
         <button class="nav-item" data-route="trips"><i data-lucide="map"></i><span>Seyahatler</span></button>
-        <button class="nav-item" data-route="friends"><i data-lucide="users"></i><span>Arkadaşlar</span></button>
         <button class="nav-item" data-route="memories"><i data-lucide="notebook-pen"></i><span>Anılar</span></button>
+        <button class="nav-item" data-route="friends"><i data-lucide="users"></i><span>Arkadaşlar</span></button>
         <button class="nav-item" data-route="settings"><i data-lucide="settings-2"></i><span>Ayarlar</span></button>
       </nav>
 
@@ -51,13 +52,12 @@
           <span class="brand-symbol" aria-hidden="true"><i data-lucide="route"></i></span><span>Roamly</span>
         </button>
         <div class="sync-state" id="syncState" role="status"><span></span><em>Hazır</em></div>
-        <button class="account-button" id="accountButton" data-open="auth"><span class="account-avatar">YÖ</span><span class="account-copy"><strong>Misafir modunda</strong><small>Bulut senkronu kapalı</small></span><i data-lucide="chevron-down"></i></button>
+        <button class="account-button" id="accountButton" data-route="settings" aria-label="Hesap ve ayarlar"><span class="account-avatar"><i data-lucide="user-round"></i></span><span class="account-copy"><strong>Misafir modunda</strong><small>Bulut senkronu kapalı</small></span><i data-lucide="chevron-down"></i></button>
       </header>
 
       <section class="page active" id="page-home" data-page="home">
         <div class="home-head">
           <div><span class="eyebrow" id="todayLabel"></span><h1 id="greeting">Yeni bir yer görelim mi?</h1><p>Planını oluştur, gününü aç ve gerisini yolda şekillendir.</p></div>
-          <button class="secondary-button desktop-only" data-open="planner"><i data-lucide="plus"></i> Yeni seyahat</button>
         </div>
 
         <section class="plan-composer" aria-labelledby="composerTitle">
@@ -97,12 +97,15 @@
       </section>
 
       <section class="page" id="page-settings" data-page="settings">
-        <div class="page-head"><div><span class="eyebrow">ROAMLY SENİN</span><h1>Ayarlar</h1><p>Hesabını, verilerini ve yolculuk tercihlerini yönet.</p></div></div>
+        <div class="page-head"><div><span class="eyebrow">HESAP VE VERİLER</span><h1>Ayarlar</h1><p>Hesabını, verilerini ve yolculuk tercihlerini yönet.</p></div></div>
         <div class="settings-layout">
           <section class="settings-card account-settings" id="accountSettings"></section>
           <section class="settings-card"><span class="settings-icon"><i data-lucide="download"></i></span><div><h2>Verilerin</h2><p>Seyahatlerini tek dosyada indir veya daha önce aldığın yedeği geri yükle.</p><div class="button-row"><button class="secondary-button" data-action="export-data">Yedeği indir</button><label class="secondary-button file-button">Yedeği içe aktar<input id="importInput" type="file" accept="application/json"></label></div></div></section>
           <section class="settings-card"><span class="settings-icon peach"><i data-lucide="hand-heart"></i></span><div><span class="eyebrow coral-text">ERKEN ERİŞİM</span><h2>Roamly Locals</h2><p>Yerellerle deneyim pazarı henüz açık değil. İlk güvenli pilotu kurarken bekleme listesine katıl.</p><button class="secondary-button" data-open="locals">Listeye katıl</button></div></section>
-          <section class="settings-card"><span class="settings-icon"><i data-lucide="shield-check"></i></span><div><h2>Gizlilik ve destek</h2><p>Roamly reklam takibi yapmaz. Konum ve fotoğraflar yalnızca sen başlattığında kullanılır.</p><div class="link-row"><a href="privacy.html">Gizlilik politikası <i data-lucide="arrow-up-right"></i></a><a href="support.html">Destek <i data-lucide="arrow-up-right"></i></a></div></div></section>
+          <section class="settings-card"><span class="settings-icon"><i data-lucide="shield-check"></i></span><div><h2>Gizlilik ve destek</h2><p>Roamly reklam takibi yapmaz. Cihaz konumuna, kameraya ve fotoğraf arşivine erişmez.</p><div class="link-row"><a href="privacy.html">Gizlilik politikası <i data-lucide="arrow-up-right"></i></a><a href="support.html">Destek <i data-lucide="arrow-up-right"></i></a></div></div></section>
+          <section class="settings-card" id="aiConsentSettings"></section>
+          <section class="settings-card hidden" id="discoverabilitySettings"></section>
+          <section class="settings-card hidden" id="deleteAccountSettings"><span class="settings-icon danger"><i data-lucide="user-x"></i></span><div><h2>Hesabı sil</h2><p>Hesabını ve buluttaki tüm verilerini kalıcı olarak sil. Bu işlem geri alınamaz; önce yedek indirebilirsin.</p><button class="danger-button" type="button" data-action="open-delete-account">Hesabı sil</button></div></section>
         </div>
       </section>
 
@@ -132,8 +135,22 @@
         <fieldset><legend>Tempon</legend><div class="choice-row"><label><input type="radio" name="pace" value="Rahat" checked><span>Rahat</span></label><label><input type="radio" name="pace" value="Dengeli"><span>Dengeli</span></label><label><input type="radio" name="pace" value="Yoğun"><span>Yoğun</span></label></div></fieldset>
         <label class="form-field full"><span>Özel bir not <em>isteğe bağlı</em></span><textarea name="note" rows="3" placeholder="Az müze, iyi kahve, çocukla rahat yürüyüş…"></textarea></label>
         <div class="form-actions"><button class="secondary-button" type="button" data-action="manual-trip">Boş planla başla</button><button class="primary-button coral" type="submit"><i data-lucide="sparkles"></i> AI planını oluştur</button></div>
-        <p class="form-note"><i data-lucide="shield-check"></i> AI planlama hesap gerektirir; anahtar hiçbir zaman cihazına indirilmez.</p>
+        <p class="form-note"><i data-lucide="shield-check"></i> AI planlama hesap gerektirir; anahtar hiçbir zaman cihazına indirilmez. Plan istemeden önce izin isteriz.</p>
       </form>
+    </section>
+  </div>
+
+  <div class="modal" id="aiConsentModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
+    <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="aiConsentTitle" aria-describedby="aiConsentLead">
+      <div class="modal-head"><div><span class="eyebrow coral-text">ROAMLY AI · İZNİN</span><h2 id="aiConsentTitle">Planın için Gemini’ye bilgi gönderelim mi?</h2><p id="aiConsentLead">AI planı, yazdıkların Roamly’nin sunucusu üzerinden Google Gemini’ye gönderilerek hazırlanır. Göndermeden önce senden izin istiyoruz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <div class="planner-form consent-body">
+        <div><strong>Gemini’ye gönderilenler</strong><ul class="consent-list"><li>Şehir</li><li>Başlangıç tarihi ve kaç gün olduğu</li><li>Seyahat stili ve tempo tercihin</li><li>Özel not alanına yazdıkların</li></ul></div>
+        <p>E-posta adresin ve hesap kimliğin Gemini’ye gönderilmez. Yer araştırması için Gemini, Google Maps’ten yararlanır. Roamly bu bilgileri reklam için kullanmaz.</p>
+        <p>Google’ın içerikleri nasıl işlediği ve ne kadar süre sakladığı <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Gemini API şartlarına</a> bağlıdır. Özel not alanına hassas kişisel bilgi yazma. Ayrıntılar için <a href="https://roamly-travel.yigitonen.chatgpt.site/privacy.html" target="_blank" rel="noopener">gizlilik politikasını</a> oku.</p>
+        <p>İznini istediğin zaman Ayarlar’dan geri çekebilirsin. Vazgeçersen hiçbir şey gönderilmez; boş bir planla devam edebilirsin.</p>
+        <div class="form-actions"><button class="secondary-button" type="button" data-action="ai-consent-decline">Vazgeç</button><button class="primary-button coral" type="button" data-action="ai-consent-accept" data-initial-focus>Kabul et ve planla</button></div>
+      </div>
     </section>
   </div>
 
@@ -144,10 +161,11 @@
       <form id="stopForm" class="planner-form">
         <input type="hidden" name="dayId"><input type="hidden" name="stopId"><input type="hidden" name="placeId"><input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="provider"><input type="hidden" name="googleMapsUrl"><input type="hidden" name="rating"><input type="hidden" name="reviewCount">
         <label class="form-field full place-search-field"><span>Yer ara</span><span class="field"><i data-lucide="search"></i><input name="title" required placeholder="Müze, restoran, mahalle…" autocomplete="off" aria-autocomplete="list" aria-controls="placeSuggestions" data-initial-focus></span><div class="place-suggestions" id="placeSuggestions" role="listbox"></div><small class="provider-note" id="placeProviderNote">3 harften sonra Google Places ile arar (giriş gerekir). Yeri elle de yazabilirsin.</small></label>
-        <div class="form-grid"><label class="form-field"><span>Saat</span><span class="field"><i data-lucide="clock-3"></i><input name="time" type="time" value="10:00" required></span></label><label class="form-field"><span>Kategori</span><span class="field"><i data-lucide="tag"></i><select name="category"><option>Kahvaltı</option><option>Kahve</option><option>Tarih</option><option>Sanat</option><option>Mahalle</option><option>Öğle yemeği</option><option>Akşam yemeği</option><option>Yemek</option><option>Doğa</option><option>Manzara</option><option>Diğer</option></select></span></label></div>
+        <div class="form-grid form-grid-pair"><label class="form-field"><span>Saat</span><span class="field"><i data-lucide="clock-3"></i><input name="time" type="time" value="10:00" required></span></label><label class="form-field"><span>Süre <em>isteğe bağlı</em></span><span class="field"><i data-lucide="timer"></i><input name="duration" maxlength="40" placeholder="1 saat"></span></label></div>
+        <label class="form-field full"><span>Kategori</span><span class="field"><i data-lucide="tag"></i><select name="category"><option>Kahvaltı</option><option>Kahve</option><option>Tarih</option><option>Sanat</option><option>Mahalle</option><option>Öğle yemeği</option><option>Akşam yemeği</option><option>Yemek</option><option>Doğa</option><option>Manzara</option><option>Diğer</option></select></span></label>
         <label class="form-field full"><span>Adres</span><span class="field"><i data-lucide="navigation"></i><input name="address" placeholder="Yol tarifi için adres"></span></label>
-        <div class="form-grid"><label class="form-field"><span>Rezervasyon</span><span class="field"><i data-lucide="calendar-check"></i><select name="bookingStatus"><option value="none">Gerekmiyor / bilinmiyor</option><option value="needed">Rezervasyon gerekli</option><option value="booked">Rezervasyon yapıldı</option></select></span></label><label class="form-field"><span>Onay kodu</span><span class="field"><i data-lucide="ticket-check"></i><input name="confirmation" maxlength="80" placeholder="İsteğe bağlı"></span></label></div>
-        <label class="form-field full"><span>Hatırlatıcı <em>isteğe bağlı</em></span><span class="field"><i data-lucide="bell-ring"></i><input name="reminderAt" type="datetime-local"></span><small class="provider-note">Telefonda yerel bildirim olarak kurulur; webde planın içinde saklanır.</small></label>
+        <details class="form-more" id="stopMore"><summary>Rezervasyon ve hatırlatıcı</summary><div class="form-grid"><label class="form-field"><span>Rezervasyon</span><span class="field"><i data-lucide="calendar-check"></i><select name="bookingStatus"><option value="none">Gerekmiyor / bilinmiyor</option><option value="needed">Rezervasyon gerekli</option><option value="booked">Rezervasyon yapıldı</option></select></span></label><label class="form-field"><span>Onay kodu <em>isteğe bağlı</em></span><span class="field"><i data-lucide="ticket-check"></i><input name="confirmation" maxlength="80"></span></label></div>
+        <label class="form-field full"><span>Hatırlatıcı <em>isteğe bağlı</em></span><span class="field"><i data-lucide="bell-ring"></i><input name="reminderAt" type="datetime-local"></span><small class="provider-note">Telefonda yerel bildirim olarak kurulur; webde planın içinde saklanır.</small></label></details>
         <label class="form-field full"><span>Not</span><textarea name="notes" rows="3" placeholder="Rezervasyon, süre veya küçük bir hatırlatma…"></textarea></label>
         <div class="form-actions"><button class="danger-button hidden" type="button" data-action="delete-stop">Durağı sil</button><button class="primary-button" type="submit">Kaydet</button></div>
       </form>
@@ -167,10 +185,24 @@
     <section class="modal-panel auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <button class="icon-button modal-close" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button>
       <span class="brand-symbol large" aria-hidden="true"><i data-lucide="route"></i></span><span class="eyebrow coral-text">BULUTTA GÜVENDE</span><h2 id="authTitle">Planların seninle gelsin.</h2><p>Farklı cihazlarda devam et ve Gemini destekli gerçek AI planlama kullan.</p>
-      <button class="primary-button google-button" data-action="sign-in-google" data-initial-focus><i data-lucide="chrome"></i> Google ile devam et</button>
-      <div class="divider"><span>veya</span></div>
-      <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" type="submit">Giriş bağlantısı gönder</button></form>
+      <button class="primary-button google-button" id="googleSignInButton" data-action="sign-in-google" data-initial-focus><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.39 3.62v3h3.87c2.27-2.09 3.57-5.17 3.57-8.81z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.87-3c-1.07.72-2.45 1.15-4.06 1.15-3.12 0-5.77-2.11-6.71-4.94H1.29v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.29 14.3A7.2 7.2 0 0 1 4.91 12c0-.8.14-1.57.38-2.3v-3.1H1.29A12 12 0 0 0 0 12c0 1.94.46 3.77 1.29 5.4l4-3.1z"/><path fill="#EA4335" d="M12 4.75c1.76 0 3.34.61 4.58 1.8l3.43-3.43C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.29 6.6l4 3.1C6.23 6.86 8.88 4.75 12 4.75z"/></svg> Google ile devam et</button>
+      <div class="divider" id="authDivider"><span>veya</span></div>
+      <form id="emailAuthForm"><label class="form-field full"><span>E-posta</span><span class="field"><i data-lucide="mail"></i><input name="email" type="email" required placeholder="sen@ornek.com" autocomplete="email"></span></label><button class="secondary-button full-button" id="emailSignInButton" type="submit">Giriş bağlantısı gönder</button></form>
       <p class="form-note">Şifre yok. E-postana güvenli bir giriş bağlantısı göndeririz.</p>
+    </section>
+  </div>
+
+  <div class="modal" id="deleteAccountModal" aria-hidden="true" inert>
+    <div class="modal-backdrop" data-close="modal" aria-hidden="true"></div>
+    <section class="modal-panel small-panel" role="dialog" aria-modal="true" aria-labelledby="deleteAccountTitle" aria-describedby="deleteAccountLead">
+      <div class="modal-head"><div><span class="eyebrow danger-text">HESABI SİL</span><h2 id="deleteAccountTitle">Hesabını kalıcı olarak silelim mi?</h2><p id="deleteAccountLead"><strong id="deleteAccountEmail">Bu hesap</strong> silinecek. Silme işlemi onayladığın anda uygulanır ve geri alınamaz.</p></div><button class="icon-button" data-close="modal" aria-label="Kapat"><i data-lucide="x"></i></button></div>
+      <form class="planner-form consent-body" id="deleteAccountForm" autocomplete="off">
+        <div><strong>Neler silinir?</strong><ul class="consent-list"><li>Hesabın ve giriş bilgilerin (e-posta adresin dahil)</li><li>Bulutta kayıtlı tüm seyahatlerin; günler, duraklar, harcamalar ve günlük notları</li><li>Profilin, arkadaşlık istekleri ve sosyal bağlantıların</li><li>Roamly Locals bekleme listesi kayıtların (hesabına bağlı olanlar ve hesabının e-posta adresiyle yapılanlar)</li><li>Yapay zekâ planı ve yer arama kullanım sayaçların</li></ul></div>
+        <p>Bu cihazdaki hatırlatıcılar ve önbellek de temizlenir. İndirdiğin yedek dosyaları ve bu cihazdaki misafir modu seyahatleri sende kalır.</p>
+        <button class="secondary-button" type="button" data-action="export-data"><i data-lucide="download"></i>Önce yedek indir</button>
+        <label class="form-field full"><span>Onaylamak için <strong>SİL</strong> yaz</span><span class="field"><i data-lucide="triangle-alert"></i><input id="deleteAccountInput" name="confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SİL" aria-describedby="deleteAccountLead" data-initial-focus></span></label>
+        <div class="form-actions"><button class="secondary-button" type="button" data-close="modal">Vazgeç</button><button class="danger-button solid" type="submit" id="deleteAccountConfirm" disabled>Hesabımı kalıcı olarak sil</button></div>
+      </form>
     </section>
   </div>
 

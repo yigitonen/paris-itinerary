@@ -1,3 +1,5 @@
+import { hasLocation } from './coords.js';
+
 const MEAL_WORDS = {
   breakfast: ['breakfast', 'kahvaltı', 'kahvalti', 'brunch'],
   lunch: ['lunch', 'öğle', 'ogle'],
@@ -56,7 +58,7 @@ export function moveStop(day, stopId, direction) {
   return { ...day, stops: stops.map((stop, position) => ({ ...stop, time: times[position] || stop.time })) };
 }
 
-const located = (stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng));
+const located = hasLocation;
 const distance = (a, b) => {
   const lat = (Number(a.lat) - Number(b.lat)) * 111;
   const lng = (Number(a.lng) - Number(b.lng)) * 111 * Math.cos(Number(a.lat) * Math.PI / 180);

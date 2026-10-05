@@ -1,0 +1,41 @@
+name: Backend tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'src/**'
+      - 'package*.json'
+      - '.github/workflows/backend-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'src/**'
+      - 'package*.json'
+      - '.github/workflows/backend-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    name: Migrations, RLS and quota (Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ubuntu-latest ships PostgreSQL server binaries; run.sh starts its own throwaway cluster.
+      - run: bash supabase/tests/run.sh
+        env:
+          TEST_ROLLBACK: '1'
+
+  functions:
+    name: Edge Functions (deno check + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: bash supabase/tests/run-deno.sh

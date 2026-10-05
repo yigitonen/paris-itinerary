@@ -9,7 +9,7 @@
 -- attempts. History in ai_plan_requests and place_search_requests is not
 -- carried over, so usage recorded there stops counting after this deploys.
 
-create table public.provider_usage (
+create table if not exists public.provider_usage (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   provider text not null check (provider in ('gemini_plan', 'google_places')),
@@ -20,14 +20,15 @@ create table public.provider_usage (
   finished_at timestamptz
 );
 
-create index provider_usage_user_idx on public.provider_usage (provider, user_id, created_at desc);
-create index provider_usage_global_idx on public.provider_usage (provider, created_at desc);
+create index if not exists provider_usage_user_idx on public.provider_usage (provider, user_id, created_at desc);
+create index if not exists provider_usage_global_idx on public.provider_usage (provider, created_at desc);
 
 alter table public.provider_usage enable row level security;
 
 revoke all on table public.provider_usage from public, anon, authenticated;
 grant all on table public.provider_usage to service_role;
 
+drop policy if exists "clients cannot access provider usage" on public.provider_usage;
 create policy "clients cannot access provider usage"
 on public.provider_usage for all
 to anon, authenticated

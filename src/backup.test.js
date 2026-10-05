@@ -309,3 +309,17 @@ test('backup errors have Turkish messages', () => {
   assert.equal(backupErrorMessage(new BackupError('too_many')), 'Bir yedekte en fazla 200 seyahat olabilir.');
   for (const error of [new BackupError('invalid_json'), new BackupError('invalid_trip'), new Error('x'), null]) assert.equal(backupErrorMessage(error), 'Bu dosya geçerli bir Roamly yedeği değil.');
 });
+
+test('a trip too large to save to the cloud rejects the import with its title and index', () => {
+  const journals = (count) => Array.from({ length: count }, (_, n) => ({ id: `j${n}`, title: `J${n}`, body: 'x'.repeat(20000) }));
+  const text = (count) => JSON.stringify({ trips: [raw(), raw({ title: 'Dev gezi', journals: journals(count) })] });
+  assert.equal(parseBackup(text(90), { makeId: counter() }).trips.length, 2);
+  assert.ok(text(120).length < BACKUP_MAX_BYTES);
+  assert.throws(() => parseBackup(text(120), { makeId: counter() }), (error) => error instanceof BackupError && error.code === 'trip_too_large' && error.index === 1 && error.title === 'Dev gezi');
+});
+
+test('the too-large backup message names the trip', () => {
+  const message = backupErrorMessage(new BackupError('trip_too_large', 'x', { title: 'Dev gezi' }));
+  assert.match(message, /^'Dev gezi' seyahati buluta kaydedilemeyecek kadar büyük\./);
+  assert.match(message, /hiçbir seyahat içe aktarılmadı/);
+});

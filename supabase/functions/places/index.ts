@@ -30,6 +30,8 @@ function text(value: unknown, max = 160) {
   return String(value || "").trim().slice(0, max);
 }
 
+// An upstream (Google) failure. `status` is Google's HTTP status (0 when there was no response) and feeds
+// failureReasonFor for the usage ledger; the client never sees it, only what clientFailure() derives.
 class PlacesError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -38,20 +40,37 @@ class PlacesError extends Error {
   }
 }
 
+// What the client is told about a failed Google call. Fixed bodies only: Google's error text stays in the
+// logs. 429 is reserved for the user's own quota (see denialResponse), so an upstream 429 is a 503 here.
+function clientFailure(error: PlacesError): { status: number; body: { error: string; code: string } } {
+  if (error.status === 429) return { status: 503, body: { error: "Place search is busy right now. Try again shortly.", code: "provider_rate_limited" } };
+  if (error.status === 401 || error.status === 403) return { status: 503, body: { error: "Place search is temporarily unavailable.", code: "provider_unavailable" } };
+  if (error.status === 504 || error.status === 0) return { status: 504, body: { error: "Place search timed out.", code: "provider_timeout" } };
+  return { status: 502, body: { error: "Place search failed upstream.", code: "provider_error" } };
+}
+
 async function google(path: string, apiKey: string, body?: unknown, fields = "*") {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const response = await fetch(`${GOOGLE_ROOT}${path}`, {
-      method: body ? "POST" : "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": fields
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${GOOGLE_ROOT}${path}`, {
+        method: body ? "POST" : "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": fields
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      // DNS, TLS, connection reset: there is no HTTP status (0); the client sees a timeout.
+      console.warn("Google Places request could not be sent", error instanceof Error ? error.name : "unknown");
+      throw new PlacesError("Google Places is unreachable.", 0);
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       console.warn("Google Places request failed", response.status, String(payload?.error?.message || "").slice(0, 180));
@@ -188,6 +207,10 @@ Deno.serve(async (request) => {
       return json(result, request);
     } catch (providerError) {
       await finish(false, failureReasonFor(providerError));
+      if (providerError instanceof PlacesError) {
+        const failure = clientFailure(providerError);
+        return json(failure.body, request, failure.status);
+      }
       throw providerError;
     }
   } catch (error) {

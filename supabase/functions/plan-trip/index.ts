@@ -238,7 +238,7 @@ Deno.serve(async (request: Request) => {
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) return json({ error: "Gemini is not configured", code: "configuration_missing" }, request, 503);
 
-    const input = validateInput(await request.json());
+    const input = validateInput(await request.json().catch(() => null));
     const model = Deno.env.get("GEMINI_MODEL") || DEFAULT_MODEL;
 
     // Reserve the quota slot atomically before any paid Gemini call. The RPC runs with
@@ -323,7 +323,7 @@ ${mapsText.slice(0, 32_000)}`;
       const stops = trip.days.flatMap((day) => day.stops);
       const verifiedCount = stops.filter((stop) => stop.verified).length;
       const coordinateCount = stops.filter((stop) => stop.lat !== null && stop.lng !== null).length;
-      const optimizedDayCount = trip.days.filter((day) => day.stops.length >= 2 && day.stops.every((stop) => stop.lat !== null && stop.lng !== null)).length;
+      const optimizedDayCount = trip.days.filter((day) => day.stops.length >= 2 && day.stops.every((stop: { lat: number | null; lng: number | null }) => stop.lat !== null && stop.lng !== null)).length;
       const researchSources = mapSources.slice(0, 12);
 
       const body = {

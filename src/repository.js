@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { createClient } from '@supabase/supabase-js';
 import { GUEST_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config.js';
 import { createDemoTrip } from './data.js';
+import { assertPlanFits, buildPlan } from './trip-plan.js';
 import { classifySyncError, clearFailedSyncForTrip, enqueueSync, isNetworkError, isOffline, MAX_SYNC_ATTEMPTS, moveSyncEntriesToFailed, readCloudCache, readFailedSync, readSyncQueue, recordSyncAttempt, removeSyncEntries, syncEntryKey, writeCloudCache } from './offline.js';
 
 const NATIVE_AUTH_REDIRECT = 'roamly://localhost/';
@@ -99,18 +100,7 @@ const toRow = (trip, userId) => ({
   cover_key: trip.coverKey || 'default',
   budget_total: Number(trip.budgetTotal) || 0,
   currency: trip.currency || 'EUR',
-  plan: {
-    source: trip.source || 'manual',
-    note: trip.note || '',
-    summary: trip.summary || '',
-    researchSummary: trip.researchSummary || '',
-    researchSources: trip.researchSources || [],
-    plannerMeta: trip.plannerMeta || null,
-    savedPlaces: trip.savedPlaces || [],
-    days: trip.days || [],
-    expenses: trip.expenses || [],
-    journals: trip.journals || []
-  }
+  plan: buildPlan(trip)
 });
 
 const fromRow = (row) => ({
@@ -199,6 +189,9 @@ export async function saveTrip(trip, session, currentTrips) {
     return { trip: nextTrip, trips: next };
   }
   const userId = session.user.id;
+  // The database rejects an oversized plan for good, so fail here (before queueing) with a clear message.
+  // The trip is not lost: the caller still holds it and guests' copies stay in local storage.
+  assertPlanFits(nextTrip);
   const row = toRow(nextTrip, userId);
   const localTrips = replaceTrip(currentTrips, nextTrip);
   if (isOffline()) {
@@ -312,6 +305,7 @@ export async function migrateGuestTrips(session) {
       const { demoEdited, ...rest } = trip;
       return { ...rest, id: UUID_PATTERN.test(trip.id) ? trip.id : crypto.randomUUID(), ...(trip.source === 'demo' && { source: 'manual' }) };
     });
+    prepared.filter((_trip, index) => uploads.has(guestTrips[index])).forEach(assertPlanFits);
     writeGuestTrips(prepared);
     const rows = prepared.filter((_trip, index) => uploads.has(guestTrips[index])).map((trip) => toRow(trip, session.user.id));
     const { data, error } = await supabase.from('trips').upsert(rows).select();
@@ -321,12 +315,14 @@ export async function migrateGuestTrips(session) {
   });
 }
 
-export async function joinLocalsWaitlist({ email, city, note }, session) {
-  const { error } = await supabase.from('locals_waitlist').insert({
-    user_id: session?.user?.id || null,
-    email,
-    city,
-    note
+// The table is closed to direct inserts: the RPC records user_id from the caller's JWT and answers
+// identically for a new and an already-listed (email, city), so the form cannot probe the list.
+// `session` is kept for call-site compatibility; the server decides who the caller is.
+export async function joinLocalsWaitlist({ email, city, note }, _session) {
+  const { error } = await supabase.rpc('join_locals_waitlist', {
+    p_email: email,
+    p_city: city,
+    p_note: note || ''
   });
   if (error) throw error;
 }

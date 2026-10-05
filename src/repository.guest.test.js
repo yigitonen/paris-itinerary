@@ -24,6 +24,14 @@ test('a first guest visit starts with the example trip', withGuestStorage(async 
   assert.deepEqual(trips.map((trip) => trip.id), ['demo-rome']);
 }));
 
+test('guest stops without coordinates stay null after a reload', withGuestStorage(async () => {
+  const [demo] = await loadTrips(null);
+  const stop = { id: 'no-pin', time: '10:00', title: 'Kahve', lat: null, lng: null };
+  await saveTrip({ ...demo, days: [{ ...demo.days[0], stops: [stop] }] }, null, [demo]);
+  const [reloaded] = await loadTrips(null);
+  assert.deepEqual([reloaded.days[0].stops[0].lat, reloaded.days[0].stops[0].lng], [null, null]);
+}));
+
 test('guest edits to the example trip survive a reload', withGuestStorage(async () => {
   const [demo] = await loadTrips(null);
   const edited = {
@@ -38,6 +46,16 @@ test('guest edits to the example trip survive a reload', withGuestStorage(async 
   assert.equal(reloaded.title, 'Roma, benim planım');
   assert.equal(reloaded.journals.length, 1);
   assert.deepEqual(reloaded.days[0].stops.map((stop) => stop.id), demo.days[0].stops.map((stop) => stop.id));
+}));
+
+test('an example trip saved with the old fixed August dates is not rewritten on load', withGuestStorage(async (values) => {
+  const [fresh] = await loadTrips(null);
+  const stored = { ...fresh, startDate: '2026-08-12', endDate: '2026-08-15', days: fresh.days.map((day, index) => ({ ...day, date: `2026-08-${12 + index}` })) };
+  values.set(GUEST_STORAGE_KEY, JSON.stringify([stored]));
+
+  const [reloaded] = await loadTrips(null);
+  assert.equal(reloaded.startDate, '2026-08-12');
+  assert.deepEqual(reloaded.days.map((day) => day.date), ['2026-08-12', '2026-08-13', '2026-08-14', '2026-08-15']);
 }));
 
 test('deleting the last guest trip stays empty after a reload', withGuestStorage(async (values) => {

@@ -13,7 +13,8 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
         privacy: resolve(import.meta.dirname, 'privacy.html'),
-        support: resolve(import.meta.dirname, 'support.html')
+        support: resolve(import.meta.dirname, 'support.html'),
+        deleteAccount: resolve(import.meta.dirname, 'delete-account.html')
       }
     }
   },

@@ -33,16 +33,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Seyahat anılarına fotoğraf ekleyebilmen için kamerana erişiyoruz.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Günlük rotanı takip etmek ve yakındaki durakları göstermek için konumunu kullanıyoruz.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Seçtiğin seyahat anılarını fotoğraf arşivine kaydetmek için izin istiyoruz.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Seyahat anılarına fotoğraf ekleyebilmen için arşivine erişiyoruz.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

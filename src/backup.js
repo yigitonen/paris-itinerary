@@ -1,4 +1,5 @@
 import { COVER_IMAGES } from './data.js';
+import { isPlanTooLarge } from './trip-plan.js';
 
 export const BACKUP_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_TRIPS = 200;
@@ -251,6 +252,8 @@ export function parseBackup(text, { makeId = defaultMakeId } = {}) {
       if (error instanceof BackupError) error.index = index;
       throw error;
     }
+    // Checked after normalizing, on the plan a cloud save would send. Like an invalid trip, one oversized trip rejects the whole file.
+    if (isPlanTooLarge(trip)) throw new BackupError('trip_too_large', 'Backup trip plan is too large', { index, title: trip.title });
     while (ids.has(trip.id)) trip.id = makeId();
     ids.add(trip.id);
     return trip;
@@ -264,5 +267,6 @@ export const serializeTrip = (trip) => JSON.stringify(trip, null, 2);
 export function backupErrorMessage(error) {
   if (error?.code === 'too_large') return 'Yedek dosyası çok büyük (en fazla 5 MB).';
   if (error?.code === 'too_many') return 'Bir yedekte en fazla 200 seyahat olabilir.';
+  if (error?.code === 'trip_too_large') return `'${error.title || 'Bir'}' seyahati buluta kaydedilemeyecek kadar büyük. Seyahati küçültüp (daha az gün, not veya günlük) yeniden dene; dosyadan hiçbir seyahat içe aktarılmadı.`;
   return 'Bu dosya geçerli bir Roamly yedeği değil.';
 }
